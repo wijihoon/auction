@@ -18,8 +18,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
 
 
-def load(n):
-    with open(os.path.join(DATA, n), encoding="utf-8") as f:
+def load(n, default=None):
+    p = os.path.join(DATA, n)
+    if not os.path.exists(p):
+        return default
+    with open(p, encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -491,27 +494,52 @@ def region_stats(history):
                 "n": len(v["r"])} for k, v in sorted(by.items())}
 
 
+def realized_from_past(past, cache, a):
+    """실제 낙찰 데이터 + 국토부 시세(매도가 추정) → 실현(추정) 수익률 레코드."""
+    out = []
+    for rec in past:
+        sale, _, _ = market_price(rec, cache, a)      # 현재 시세 = 매도가 추정
+        won = rec.get("won_bid")
+        if not won or not sale:
+            continue
+        _, _, costs, _ = net_profit(won, sale, rec, a)
+        out.append({"id": rec["id"], "region": rec.get("region"), "type": rec.get("type"),
+                    "appraisal": rec.get("appraisal"), "won_bid": won,
+                    "resale_price": int(sale), "costs": int(costs),
+                    "sale_ratio": rec.get("sale_ratio"),
+                    "result_date": rec.get("result_date"), "resale_date": rec.get("result_date"),
+                    "bidders": rec.get("bidders")})
+    return out
+
+
 def main():
     key = os.environ.get("MOLIT_SERVICE_KEY", "").strip()
     props = load("properties.json")
     baselines = load("baselines.json")
     a = load("assumptions.json")
-    history_all = load("auction-history.json")
     lookback = a.get("history_lookback_days", 30)
-    history = filter_recent_history(history_all, lookback)   # 과거 실적은 최근 N일만
-
     months = a.get("molit_months", 6)
     workers = a.get("molit_workers", 8)
-    print(f"[analyze] 물건 {len(props)}건 · 시세 캐시 준비 중(국토부 동시 조회)...", flush=True)
-    cache = build_trade_cache(props, key, months, workers)   # 시군구당 1회, 동시 조회
-    print(f"[analyze] 물건 분석 중...", flush=True)
+
+    past_real = load("past-results.json", []) or []
+    if past_real:
+        past_real = filter_recent_history(past_real, lookback)   # 최근 N일 낙찰만
+        cache = build_trade_cache(props + past_real, key, months, workers)
+        history = realized_from_past(past_real, cache, a)
+        hsrc = "실제 낙찰가 + 국토부 시세(매도가 추정)"
+    else:
+        cache = build_trade_cache(props, key, months, workers)
+        history = filter_recent_history(load("auction-history.json") or [], lookback)
+        hsrc = "내장 샘플"
+
+    print(f"[analyze] 물건 {len(props)}건 · 과거 실적 {len(history)}건({hsrc}) · 분석 중...", flush=True)
     results = [analyze_property(p, baselines, a, history, cache) for p in props]
     results.sort(key=lambda r: r["score"], reverse=True)
     save("analysis.json", {
         "generated_at": datetime.now(timezone(timedelta(hours=9))).isoformat(),
         "market_source_used": "molit_api" if key else "fallback(override/appraisal)",
-        "history_lookback_days": lookback,
-        "history_used": len(history), "history_total": len(history_all),
+        "history_lookback_days": lookback, "history_used": len(history),
+        "history_total": len(past_real) if past_real else None, "history_source": hsrc,
         "assumptions": a, "properties": results,
         "backtest": backtest(history), "region_stats": region_stats(history)})
     print(f"[analyze] 완료: {len(results)}건 → data/analysis.json", flush=True)

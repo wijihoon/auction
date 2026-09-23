@@ -89,15 +89,14 @@ CLOSE = [
     "제 기준에선 {v} 물건입니다.",
 ]
 CTA = [
-    "얼마 써야 낙찰되고 되팔면 얼마 남는지는 따로 정리해뒀는데, 공개하긴 좀 그래서요. 궁금하신 분은 댓글 남겨주시면 하나씩 알려드릴게요.",
-    "적정 입찰가랑 예상 수익 숫자는 아껴뒀습니다. 필요하신 분 댓글 주시면 확인하고 답변드릴게요.",
-    "구체적인 입찰가·수익 계산은 블라인드 처리했어요. 궁금하시면 댓글 부탁드립니다. 순서대로 답 드리겠습니다.",
+    "이 숫자는 여기 다 풀긴 좀 그래서 접어둘게요. 궁금하신 분은 댓글 남겨주시면 시간 날 때 하나씩 알려드릴게요.",
+    "정확한 가격은 제가 따로 들고 있을게요 ㅎㅎ 필요하신 분 댓글 주시면 개별로 알려드리겠습니다.",
+    "이건 좀 아껴둘게요. 궁금한 분들 댓글 주세요, 확인하고 답 드릴게요.",
 ]
 
 
 def cta_box(line):
-    return (f'<div class="cta"><b>💬 적정 입찰가·예상 수익 문의</b><br>{line}'
-            f'<div class="btn">👇 댓글로 문의하기</div></div>')
+    return f'<p class="ask">💬 {line}</p>'
 
 
 def make_title(r, nm):
@@ -137,9 +136,7 @@ STYLE = """
 .auc th,.auc td{border-bottom:1px solid #ececf0;padding:9px 4px;text-align:left;vertical-align:top}
 .auc th{color:#8b909b;font-weight:600;width:34%;white-space:nowrap}
 .auc b{color:#12151b}
-.auc .cta{margin:1.5em 0;background:#f3faf5;border:1px solid #cdead9;border-radius:14px;padding:18px 20px;line-height:1.7}
-.auc .cta b{color:#127a4a}
-.auc .cta .btn{display:inline-block;margin-top:10px;background:#1f9d63;color:#fff;font-weight:700;border-radius:999px;padding:9px 18px}
+.auc .ask{background:#f6f8fb;border-left:3px solid #aeb8c7;border-radius:0 10px 10px 0;padding:13px 16px;color:#3a4150;margin:1.4em 0;font-size:.98em}
 .auc .tags{margin-top:1.8em;color:#3d7bd6;font-size:.9em;line-height:1.9;word-break:keep-all}
 .auc .disc{font-size:.85em;color:#a2a7b0;margin-top:1.6em}
 </style>
@@ -244,7 +241,7 @@ def generate_post(r, rank):
 <p>{rights_para}</p>
 <p>{cost_para}</p>
 <p><b>그래서 결론적으로, 얼마에 써야 하고 되팔면 얼마 남느냐.</b> 저는 보수·권장·공격 세 가지 입찰가랑
-예상 순이익·수익률(ROI)까지 다 뽑아놨는데요 — {cta}</p>
+예상 순이익·수익률(ROI)까지 다 뽑아놨습니다.</p>
 {cta_box(cta)}
 <p>정리하면 {vword} 물건이에요. {liq_note} 판단은 각자 몫이지만 저는 이렇게 봤습니다.
 비슷하게 보고 계신 분, 혹은 이 물건 임장 다녀오신 분 있으면 댓글로 정보 나눠요.</p>
@@ -263,7 +260,7 @@ def generate_past_post(c, rank):
 <p>이번엔 이미 끝난 경매 하나 복기해볼게요. {c['region']} {c['type']}인데, 감정가 {won(c.get('appraisal'))}원짜리가
 낙찰가율 {c.get('sale_ratio','—')}%에 낙찰됐고, 나중에 재매도해서 <b>수익률 {c['roi']*100:.1f}%</b> 나왔던 건이에요.</p>
 <p>낙찰가율 {c.get('sale_ratio','—')}% 보면 그 동네 경쟁이 대충 감이 오죠. 응찰자도 {c.get('bidders','—')}명쯤 붙었고요.
-실제 낙찰가랑 매도가, 순이익 액수는 이번엔 좀 아껴둘게요.</p>
+실제 낙찰가랑 매도가, 순이익 액수는 이번엔 접어둘게요.</p>
 {cta_box(cta)}
 <p>지금 진행 중인 비슷한 물건에 이 기준 대입해보면 감 잡기 좋습니다.</p>
 <div class="tags">{tag_line(c['region'], c['type'], nm)}</div>

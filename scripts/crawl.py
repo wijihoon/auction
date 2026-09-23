@@ -316,6 +316,120 @@ def crawl(cfg):
     return props
 
 
+PAST_EP = BASE + "/pgj/pgjsearch/selectDspslSchdRsltSrch.on"
+PAST_OUT = os.path.join(DATA, "past-results.json")
+
+
+def fetch_past_page(opener, page, timeout=12, retries=3):
+    """매각결과(과거 낙찰) 1페이지. 지수 백오프 재시도."""
+    headers = {"User-Agent": UA, "Content-Type": "application/json;charset=UTF-8",
+               "Accept": "application/json", "Accept-Language": "ko-KR,ko;q=0.9",
+               "Referer": BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ158M02.xml",
+               "submissionid": "sbm_selectDspslRsltSrch", "SC-Pgmid": "PGJ158M02"}
+    payload = {"dma_pageInfo": {"pageNo": str(page), "pageSize": "40", "totalYn": "Y" if page == 1 else "N"},
+               "dma_srchGdsDtlSrchInfo": {"pgmId": "PGJ158M02", "statNum": "3", "cortStDvs": "0",
+                                          "mvprpRletDvsCd": "00031R"}}
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(PAST_EP, data=json.dumps(payload).encode("utf-8"),
+                                         headers=headers, method="POST")
+            with opener.open(req, timeout=timeout) as r:
+                data = json.loads(r.read().decode("utf-8")).get("data", {})
+                total = None
+                if page == 1:
+                    try:
+                        total = int(data.get("dma_pageInfo", {}).get("totalCnt", 0))
+                    except Exception:
+                        total = None
+                return data.get("dlt_srchResult", []), total
+        except urllib.error.HTTPError as e:
+            if attempt == retries - 1:
+                print(f"[past] p{page} HTTP {e.code}", file=sys.stderr)
+        except Exception as e:  # noqa: BLE001
+            if attempt == retries - 1:
+                print(f"[past] p{page} {type(e).__name__}", file=sys.stderr)
+        time.sleep(0.35 * (attempt + 1) + random.uniform(0.05, 0.15))
+    return None, None
+
+
+def past_row_to_item(row, f, cutoff):
+    won = _to_int(row.get("maeAmt"))
+    if won <= 0:                                  # 낙찰 건만
+        return None
+    appr = _to_int(row.get("gamevalAmt"))
+    if appr < f["min_appr"] or appr > f["max_appr"]:
+        return None
+    usage = row.get("dspslUsgNm", "") or ""
+    if not any(u in usage for u in f["usage"]):
+        return None
+    sido = row.get("hjguSido", "") or row.get("printSt", "")
+    if not any(s in sido for s in f["sido"]):
+        return None
+    raw = str(row.get("maeGiil", ""))
+    if len(raw) == 8 and raw < cutoff:            # 최근 N일만
+        return None
+    case = row.get("srnSaNo", "")
+    if not case:
+        return None
+    court = row.get("jiwonNm", "법원")
+    seq = _to_int(row.get("maemulSer", 1), 1)
+    addr = (row.get("printSt", "") or "").strip()
+    bld = row.get("pjbBuldList", "") or ""
+    rdate = f"{raw[:4]}-{raw[4:6]}-{raw[6:]}" if len(raw) == 8 else None
+    return {"id": f"{court}_{case}_{seq}", "region": region_from_address(addr),
+            "type": type_from_usage(usage), "apt_name": extract_apt_name(addr, bld),
+            "lawd_cd": lawd_from_address(addr), "exclusive_area": extract_area(bld),
+            "appraisal": appr, "won_bid": won,
+            "sale_ratio": round(100 * won / appr, 1) if appr else None,
+            "result_date": rdate, "fail_rounds": _to_int(row.get("yuchalCnt")),
+            "eviction": "normal", "address": addr, "bidders": _to_int(row.get("gugsu")) or None}
+
+
+def crawl_past(cfg):
+    f = {"sido": cfg.get("sido", ["서울특별시", "경기도", "인천광역시"]),
+         "usage": cfg.get("usage", ["아파트", "오피스텔", "연립다세대", "다세대", "연립", "빌라"]),
+         "min_appr": cfg.get("min_appraisal", 50000000), "max_appr": cfg.get("max_appraisal", 5000000000)}
+    days = cfg.get("past_history_days", 60)
+    workers = cfg.get("max_workers", 8)
+    timeout = cfg.get("request_timeout_sec", 12)
+    retries = cfg.get("max_retries", 3)
+    max_pages_cap = cfg.get("max_pages", 800)
+    cutoff = (datetime.now(KST) - timedelta(days=days)).strftime("%Y%m%d")
+    t0 = time.time()
+    print(f"[past] 매각결과 수집 시작 · 최근 {days}일({cutoff}~)", flush=True)
+    opener = make_opener()
+    first, total = fetch_past_page(opener, 1, timeout, retries)
+    if first is None:
+        print("[past] 1페이지 실패 — 매각결과 수집 중단", file=sys.stderr)
+        return []
+    total_pages = min(math.ceil(total / 40), max_pages_cap) if total else min(120, max_pages_cap)
+    print(f"[past] 총 {total or '?'}건 / {total_pages}페이지", flush=True)
+    out, seen = [], set()
+
+    def take(rows):
+        for row in rows or []:
+            it = past_row_to_item(row, f, cutoff)
+            if not it or it["id"] in seen:
+                continue
+            seen.add(it["id"])
+            out.append(it)
+
+    take(first)
+    pages = list(range(2, total_pages + 1))
+    for i in range(0, len(pages), 20):
+        chunk = pages[i:i + 20]
+        with ThreadPoolExecutor(max_workers=workers) as ex:
+            res = list(ex.map(lambda p: fetch_past_page(opener, p, timeout, retries)[0], chunk))
+        before = len(out)
+        for rows in res:
+            take(rows)
+        print(f"[past] ~{chunk[-1]}/{total_pages}p · 누적 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
+        if out and len(out) == before:            # 최근 구간을 지나 더 안 늘면 종료
+            break
+    print(f"[past] 완료: 낙찰 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
+    return out
+
+
 def sample_properties():
     p = os.path.join(DATA, "properties.sample.json")
     if os.path.exists(p):
@@ -351,20 +465,29 @@ def main():
 
     if props:
         save(props)
-        # MOLIT 조회 가능 비율(법정동코드 확보) 리포트
         with_lawd = sum(1 for p in props if p.get("lawd_cd"))
         print(f"[crawl] 수집 {len(props)}건 → properties.json "
               f"(법정동코드 확보 {with_lawd}/{len(props)}, 시세조회 가능)")
-        return
-
-    # 수집 0건: 기존 데이터 보존(덮어쓰지 않음), 최초 실행이면 샘플
-    if os.path.exists(OUT):
-        print("[crawl] 수집 0건 — 기존 properties.json 유지(분석·추적 계속). "
-              "접속 차단이 의심되면 crawl-config의 조건을 확인하세요.", file=sys.stderr)
+    elif os.path.exists(OUT):
+        print("[crawl] 수집 0건 — 기존 properties.json 유지", file=sys.stderr)
     else:
         props = sample_properties()
         save(props)
         print(f"[crawl] 수집 0건 — 최초 실행이라 샘플 {len(props)}건으로 시작", file=sys.stderr)
+
+    # 과거 매각결과(실적) 수집
+    if "--active-only" not in sys.argv:
+        try:
+            past = crawl_past(cfg)
+        except Exception as e:  # noqa: BLE001
+            print(f"[past] 수집 오류: {type(e).__name__}", file=sys.stderr)
+            past = []
+        if past:
+            with open(PAST_OUT, "w", encoding="utf-8") as fp:
+                json.dump(past, fp, ensure_ascii=False, indent=2)
+            print(f"[past] {len(past)}건 → past-results.json")
+        elif os.path.exists(PAST_OUT):
+            print("[past] 0건 — 기존 past-results.json 유지", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ name: 경매 자동 수집·분석
 on:
   workflow_dispatch: {}
   schedule:
-    - cron: "0 21 * * *"     # 매일 06:00 KST (전날 21:00 UTC) 수집·분석
+    - cron: "27 21 * * *"     # 매일 06:00 KST (전날 21:00 UTC) 수집·분석
   push:
     branches: [main]
     paths:
@@ -48,7 +48,7 @@ jobs:
         run: |
           git config user.name  "auction-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/properties.json data/analysis.json data/predictions.json data/outcomes.json data/calibration.json data/published.json content
+          git add data/properties.json data/past-results.json data/analysis.json data/predictions.json data/outcomes.json data/calibration.json data/published.json content
           if git diff --cached --quiet; then
             echo "변경 없음 — 커밋 생략"
           else

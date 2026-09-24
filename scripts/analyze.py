@@ -35,6 +35,36 @@ def norm_cdf(z):
     return 0.5 * (1 + math.erf(z / math.sqrt(2)))
 
 
+def _probit(p):
+    """표준정규 역함수(Acklam 근사). 승자의 저주 보정용."""
+    p = min(max(p, 1e-9), 1 - 1e-9)
+    a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02,
+         1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00]
+    b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02,
+         6.680131188771972e+01, -1.328068155288572e+01]
+    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00,
+         -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00]
+    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137142996e+00, 3.754408661907416e+00]
+    plow, phigh = 0.02425, 1 - 0.02425
+    if p < plow:
+        q = math.sqrt(-2 * math.log(p))
+        return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+    if p > phigh:
+        q = math.sqrt(-2 * math.log(1 - p))
+        return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
+    q = p - 0.5
+    r = q * q
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)
+
+
+def expected_max_normal(n):
+    """N개 표준정규 표본의 최댓값 기대(Blom 근사). 승자의 저주 보정계수."""
+    n = max(1, int(round(n)))
+    if n <= 1:
+        return 0.0
+    return _probit((n - 0.375) / (n + 0.25))
+
+
 def _parse_date(s):
     if not s:
         return None
@@ -395,24 +425,50 @@ def bid_strategies(sale, prop, a, appr, mean_adj, std, liq):
             "roi_floor": round(floor, 3), "min_roi_floor": min_floor}, best_ev
 
 
-# ----------------------- 종합 점수(환금성 최우선) -----------------------
+# ----------------------- 종합 점수 (검증된 투자이론 기반) -----------------------
 def composite_score(res, a):
+    """환금성 최우선 + 유명 투자이론 조합:
+      · 안전마진(Graham Margin of Safety): (보정가치−권장입찰가)/보정가치
+      · 위험조정수익(Sharpe 개념): 수익률 ÷ 시세 변동위험
+      · 낙찰가능성(성공률), 권리안전, 환금성.
+    """
     w = a["score_weights"]
     liq = res["liquidity"]["score"]
-    profit_s = max(0.0, min(1.0, res["roi"] / 0.30)) * 100      # ROI 30%면 만점
+    va = res.get("value_adjusted") or res.get("market_price") or 0
+    rec = res.get("recommended_bid") or 0
+
+    # 안전마진 (MoS): 25% 쿠션이면 만점
+    mos = max(0.0, (va - rec) / va) if va else 0.0
+    margin_s = min(1.0, mos / 0.25) * 100
+    # 위험조정수익 (Sharpe-ish): ROI ÷ 위험(시세 변동계수), Sharpe 3 만점
+    risk = max(a.get("resale_cv", 0.06), 0.03)
+    sharpe_s = min(1.0, max(0.0, (res["roi"] / risk) / 3.0)) * 100
     win_s = res["success_prob"] * 100
     rights_s = 100 - res["rights_risk"]["score"]
-    margin = res.get("discount_vs_market") or 0
-    margin_s = max(0.0, min(1.0, margin / 0.20)) * 100          # 시세 대비 20% 할인이면 만점
-    base = (w["liquidity"] * liq + w["profit"] * profit_s + w["win"] * win_s
-            + w["rights"] * rights_s + w["margin"] * margin_s)
-    gate = a["liquidity_gate"] + (1 - a["liquidity_gate"]) * (liq / 100.0)  # 환금성 게이트
+
+    base = (w["liquidity"] * liq + w["margin"] * margin_s + w["sharpe"] * sharpe_s
+            + w["rights"] * rights_s + w["win"] * win_s)
+    gate = a["liquidity_gate"] + (1 - a["liquidity_gate"]) * (liq / 100.0)   # 환금성 게이트
     total = base * gate
-    if res["net_profit"] <= 0:                                  # 순손실이면 상한 억제
+    if res["net_profit"] <= 0:                                   # 순손실이면 상한 억제
         total = min(total, 20)
-    br = {"환금성": round(liq), "수익성": round(profit_s), "성공률": round(win_s),
-          "권리안전": round(rights_s), "안전마진": round(margin_s)}
+    br = {"환금성": round(liq), "안전마진": round(margin_s), "위험조정수익": round(sharpe_s),
+          "권리안전": round(rights_s), "낙찰가능성": round(win_s)}
     return round(total), br
+
+
+def kelly_fraction(res, a):
+    """Kelly Criterion(연속형 하프켈리): f* = 0.5 · μ/σ².
+    μ=기대수익률(ROI), σ=재매도가 불확실성에서 온 수익률 변동성. 자금배분 가이드(0~1)."""
+    inv = (res.get("recommended_bid") or 0) + res.get("assumed_rights", 0)
+    mu = res.get("roi") or 0
+    if inv <= 0 or mu <= 0:
+        return 0.0
+    sale = res.get("value_adjusted") or res.get("market_price") or inv
+    sigma = (sale * a.get("resale_cv", 0.06)) / inv
+    if sigma <= 0:
+        return 0.0
+    return round(max(0.0, min(0.5 * mu / (sigma * sigma), 1.0)), 3)
 
 
 # ----------------------- 물건 분석 -----------------------
@@ -422,10 +478,16 @@ def analyze_property(prop, baselines, a, history, cache):
     mean_adj, std, bidders, mean_raw = ratio_and_bidders(prop, sale, baselines, history, a)
     liq = liquidity_score(prop, baselines, a, trade_count)
 
-    strat, _ = bid_strategies(sale, prop, a, appr, mean_adj, std, liq["score"])
-    # 권장가 = 최소수익률을 지키는 범위의 기대가치 최적가(최저가 이상)
+    # 승자의 저주 보정(공통가치 경매): 낙찰 = 내 평가가 최고였다는 뜻 → 조건부 기대가치는
+    # 시세보다 낮다. V_adj = 시세 × (1 − cv × E[max of N normals]).
+    # 경쟁(N)·시세 불확실성(cv)이 클수록 보정폭↑ → 과열 물건일수록 보수적으로 써서 과다낙찰 방지.
+    cv = a.get("resale_cv", 0.06)
+    wc = min(a.get("wc_cap", 0.20), cv * expected_max_normal(bidders))
+    sale_eff = int(sale * (1 - wc))
+
+    strat, _ = bid_strategies(sale_eff, prop, a, appr, mean_adj, std, liq["score"])
     rec = max(strat["ev_optimal"], prop["min_bid"])
-    profit, roi, costs, items = net_profit(rec, sale, prop, a)
+    profit, roi, costs, items = net_profit(rec, sale_eff, prop, a)   # 보정가치 기준(보수적)
     win = success_prob(rec, appr, mean_adj, std)
     ev = win * profit
     risk = rights_risk(prop)
@@ -434,7 +496,7 @@ def analyze_property(prop, baselines, a, history, cache):
     lo, hi = prop["min_bid"], int(appr * 1.05)
     for i in range(21):
         b = lo + (hi - lo) * i / 20
-        pr, r, _, _ = net_profit(b, sale, prop, a)
+        pr, r, _, _ = net_profit(b, sale_eff, prop, a)
         curve.append({"bid": int(b), "win": round(success_prob(b, appr, mean_adj, std), 4),
                       "profit": int(pr), "roi": round(r, 4)})
 
@@ -443,7 +505,9 @@ def analyze_property(prop, baselines, a, history, cache):
            "exclusive_area": prop.get("exclusive_area"), "floor": prop.get("floor"),
            "orientation": prop.get("orientation"), "appraisal": appr, "min_bid": prop["min_bid"],
            "fail_rounds": prop.get("fail_rounds", 0), "sale_date": prop.get("sale_date"),
+           "case_no": prop.get("case_no"),
            "market_price": sale, "market_source": src,
+           "value_adjusted": sale_eff, "winners_curse": round(wc, 3),
            "recommended_bid": rec, "bid_strategies": strat,
            "discount_vs_market": round(1 - rec / sale, 4) if sale else None,
            "success_prob": round(win, 4), "expected_bidders": bidders,
@@ -453,6 +517,7 @@ def analyze_property(prop, baselines, a, history, cache):
            "ratio_dist": {"mean": round(mean_adj, 1), "mean_raw": mean_raw, "std": round(std, 1)},
            "curve": curve}
     res["score"], res["score_breakdown"] = composite_score(res, a)
+    res["kelly_fraction"] = kelly_fraction(res, a)
     return res
 
 

@@ -80,7 +80,7 @@
   <h1>오늘의 경매 물건</h1>
   <div class="brief" id="brief"></div>
 
-  <div class="tabbar"><button class="tab on" data-tab="now">현재 물건</button><button class="tab" data-tab="past">과거 실적</button></div>
+  <div class="tabbar"><button class="tab on" data-tab="now">현재 물건</button><button class="tab" data-tab="past">과거 실적</button><button class="tab" data-tab="method">산정 방법</button></div>
 
   <div id="tab-now">
   <div class="controls">
@@ -105,6 +105,8 @@
   <div class="box" style="margin-top:12px"><div style="font-size:12.5px;color:var(--mut);margin-bottom:8px">지역·유형별 평균 낙찰가율</div><div id="bars"></div></div>
   </div>
 
+  <div id="tab-method" hidden><div id="method"></div></div>
+
   <footer>시세는 국토부 실거래가 기준 추정, 세율·부대비용은 근사값입니다. 투자 자문이 아니며 입찰 전 매각물건명세서·현황조사서를 직접 확인하세요.</footer>
 </main>
 
@@ -116,6 +118,8 @@ const sc=n=>n>=0?"pos":"neg";
 const el=id=>document.getElementById(id);
 function dong(a){if(!a)return"";const m=a.match(/([가-힣]+(?:동|읍|면))/);return m?m[1]:""}
 function pName(r){return (r.apt_name&&r.apt_name.trim())||dong(r.address)||r.type||"물건"}
+function caseNo(r){if(r.case_no)return r.case_no;const m=(r.id||"").match(/\d{4}[가-힣]?타경\d+/);return m?m[0]:(r.id||"");}
+const COURT_URL="https://www.courtauction.go.kr/";
 function verdict(r){const hi=(r.rights_risk||{}).level==="높음";
   if(r.net_profit>0&&r.success_prob>=.35&&r.roi>=.10&&!hi)return["v-go","입찰 적합"];
   if(r.net_profit>0&&r.roi>=.05&&!hi)return["v-hold","조건부"];return["v-skip","보류"]}
@@ -127,7 +131,7 @@ function cardHTML(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rig
   return `<div class="card" data-i="${i}" data-type="${r.type}">
     <div class="ctop"><span class="sb ${sb}">${r.score}</span>
       <span class="nm">${pName(r)}</span><span class="vd ${vc}">${vt}</span></div>
-    <div class="tags"><b>${r.region}</b> · ${r.type} · 유찰 ${r.fail_rounds}회 · 환금성 ${lq.grade||"—"}</div>
+    <div class="tags"><b>${r.region}</b> · ${r.type} · 유찰 ${r.fail_rounds}회 · 환금성 ${lq.grade||"—"} · <a href="${COURT_URL}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue)">사건 ${caseNo(r)}↗</a></div>
     <div class="mini">
       <div><div class="l">적정 입찰가</div><div class="v gold">${won(r.recommended_bid)}</div></div>
       <div><div class="l">낙찰 성공률</div><div class="v cool">${pct(r.success_prob)} <span style="color:var(--dim);font-size:11px">~${r.expected_bidders}명</span></div></div>
@@ -143,11 +147,13 @@ function cardHTML(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rig
       </div>
       <table class="cost">
         <tr><td>예상 매도가(시세)</td><td>${won(r.market_price)}</td></tr>
+        ${r.winners_curse?`<tr><td>승자의 저주 보정</td><td>−${(r.winners_curse*100).toFixed(1)}% → ${won(r.value_adjusted)}</td></tr>`:""}
         <tr><td>− 낙찰가(권장)</td><td>${won(r.recommended_bid)}</td></tr>
         ${Object.entries(r.cost_items||{}).map(([k,v])=>v?`<tr><td>− ${k}</td><td>${won(v)}</td></tr>`:"").join("")}
         <tr style="border-top:1px solid var(--line)"><td style="color:var(--tx);font-weight:700">= 순이익</td><td class="${sc(r.net_profit)}" style="font-weight:700">${won(r.net_profit)}</td></tr>
       </table>
       <canvas class="cv" height="120"></canvas>
+      <div style="font-size:11px;color:var(--mut);margin-top:8px;line-height:1.7">점수구성 — 환금성 ${(r.score_breakdown||{}).환금성??"—"} · 안전마진 ${(r.score_breakdown||{}).안전마진??"—"} · 위험조정 ${(r.score_breakdown||{}).위험조정수익??"—"} · 권리 ${(r.score_breakdown||{}).권리안전??"—"} · 낙찰가능 ${(r.score_breakdown||{}).낙찰가능성??"—"}<br>Kelly 자금배분 ${Math.round((r.kelly_fraction||0)*100)}%</div>
     </div>
   </div>`}
 
@@ -191,13 +197,42 @@ function renderPast(){const bt=AN.backtest,s=bt.summary,wd=AN.history_lookback_d
     <div class="track"><div class="fill" style="width:${(v.avg_sale_ratio/mx*100).toFixed(0)}%"></div></div>
     <div class="num" style="text-align:right">${v.avg_sale_ratio}%</div></div>`).join("")}
 
+function renderMethod(){
+  const w=(AN.assumptions&&AN.assumptions.score_weights)||{liquidity:.35,margin:.20,sharpe:.20,rights:.15,win:.10};
+  const P=v=>Math.round(v*100)+"%";
+  el("method").innerHTML=`
+  <h2>어떻게 계산했나</h2>
+  <p class="sub">모든 수치는 공개 데이터 기반 자동 산정입니다. 아래는 데이터 출처와 계산 방식입니다.</p>
+  <div class="box"><h3 style="margin:0 0 8px;font-size:14px">📥 데이터 출처</h3>
+   <table class="rep" style="min-width:0"><tbody>
+   <tr><td>경매 물건</td><td style="text-align:left">법원경매정보(courtauction.go.kr) 검색 API를 매일 크롤링</td></tr>
+   <tr><td>과거 낙찰</td><td style="text-align:left">법원경매정보 매각결과 API(최근 ${AN.history_lookback_days||60}일)</td></tr>
+   <tr><td>시세(매도가)</td><td style="text-align:left">국토교통부 실거래가 OpenAPI — 같은 단지·유사 면적 최근 실거래 중앙값(층·향 보정)</td></tr>
+   </tbody></table></div>
+  <div class="box" style="margin-top:10px"><h3 style="margin:0 0 8px;font-size:14px">🎯 적정 입찰가</h3>
+   <p style="margin:.4em 0"><b>① 승자의 저주 보정</b> (공통가치 경매, Capen·Clapp·Campbell 1971) — 낙찰됐다는 건 내 평가가 최고였다는 뜻이라 실제 가치는 시세보다 낮습니다. <code>보정가치 = 시세 × (1 − 변동계수 × E[응찰자수 정규최댓값])</code>. 경쟁·불확실성이 클수록 더 깎아 과다낙찰을 막습니다.</p>
+   <p style="margin:.4em 0"><b>② 기대가치 최적화</b> (1차가격 봉인입찰, Vickrey·Milgrom–Weber) — 실제 낙찰가율 분포로 낙찰확률을 잡고 <b>낙찰확률 × 보정순이익</b>이 가장 큰 가격을 찾습니다. 최소수익률(기본 8%) 하한도 적용. 보수·권장·공격 3가지로 제시.</p></div>
+  <div class="box" style="margin-top:10px"><h3 style="margin:0 0 8px;font-size:14px">📈 낙찰 성공률 · 예상 순이익</h3>
+   <p style="margin:.4em 0"><b>성공률</b> = 지역·유형별 <b>실제 낙찰가율 분포</b>(과거 낙찰 데이터로 학습) + 경쟁도(예상 응찰자 수)로 조정한 뒤, 내 입찰가율이 그 분포에서 이길 확률.</p>
+   <p style="margin:.4em 0"><b>순이익</b> = 보정 매도가 − 낙찰가 − 부대비용(취득세·양도세·명도·수리·보유·매도중개·인수권리). 세금은 보유기간(단기중과 등)까지 반영.</p></div>
+  <div class="box" style="margin-top:10px"><h3 style="margin:0 0 8px;font-size:14px">🏅 종합 점수 (검증된 투자이론)</h3>
+   <table class="rep" style="min-width:0"><tbody>
+   <tr><td>환금성 (최우선)</td><td style="text-align:right">${P(w.liquidity)}</td></tr>
+   <tr><td>안전마진 · Graham Margin of Safety</td><td style="text-align:right">${P(w.margin)}</td></tr>
+   <tr><td>위험조정수익 · Sharpe 개념</td><td style="text-align:right">${P(w.sharpe)}</td></tr>
+   <tr><td>권리 안전</td><td style="text-align:right">${P(w.rights)}</td></tr>
+   <tr><td>낙찰 가능성</td><td style="text-align:right">${P(w.win)}</td></tr>
+   </tbody></table>
+   <p style="margin:.5em 0;font-size:.95em">가중합에 <b>환금성 게이트</b>를 곱해 환금성 낮은 물건은 총점을 눌렀고(환금성 최우선), 순손실 물건은 20점 상한. 별도로 <b>Kelly 기준</b> 자금배분 비중도 제시합니다.</p></div>
+  <p class="disc" style="color:var(--dim);font-size:12px;margin-top:14px">세율·부대비용·확률은 근사 추정이며 투자 자문이 아닙니다.</p>`;
+}
 async function boot(){
   try{AN=await fetch("data/analysis.json").then(r=>r.json())}catch(e){}
   if(!AN){el("grid").innerHTML='<div class="box" style="color:var(--mut)">데이터가 아직 없습니다. 파이프라인 첫 실행 후 표시됩니다.</div>';return}
   el("meta").textContent=(AN.generated_at||"").slice(0,16).replace("T"," ");
-  renderBrief();renderChips();renderGrid();renderPast();
+  renderBrief();renderChips();renderGrid();renderPast();renderMethod();
   el("sort").onchange=renderGrid;
-  document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));el("tab-now").hidden=t.dataset.tab!=="now";el("tab-past").hidden=t.dataset.tab!=="past";});
+  document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));["now","past","method"].forEach(k=>el("tab-"+k).hidden=t.dataset.tab!==k);});
   addEventListener("resize",()=>{const rows=shown();document.querySelectorAll(".card.open").forEach(c=>drawCurve(c.querySelector(".cv"),rows[+c.dataset.i]))});
 }
 boot();

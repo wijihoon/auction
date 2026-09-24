@@ -103,15 +103,16 @@
     "price_high": 1500000000
   },
   "score_weights": {
-    "liquidity": 0.4,
-    "profit": 0.25,
-    "win": 0.1,
+    "liquidity": 0.35,
+    "margin": 0.2,
+    "sharpe": 0.2,
     "rights": 0.15,
-    "margin": 0.1
+    "win": 0.1
   },
   "liquidity_gate": 0.7,
   "min_roi_floor": 0.08,
   "history_lookback_days": 30,
   "molit_months": 6,
-  "molit_workers": 8
+  "molit_workers": 8,
+  "wc_cap": 0.2
 }

@@ -5,13 +5,7 @@ on:
   schedule:
     - cron: "27 21 * * *"     # 매일 06:00 KST (전날 21:00 UTC) 수집·분석
   push:
-    branches: [main]
-    paths:
-      - "data/crawl-config.json"
-      - "data/baselines.json"
-      - "data/assumptions.json"
-      - "data/auction-history.json"
-      - "scripts/**"
+    branches: [main, master]
 
 permissions:
   contents: write

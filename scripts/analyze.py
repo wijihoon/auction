@@ -9,14 +9,7 @@
 세금: 취득세(구간·농특·교육세·중과) / 양도세(단기중과·누진·장특공제·지방소득세).
 표준 라이브러리만 사용. GitHub Actions에서 secrets.MOLIT_SERVICE_KEY 주입.
 """
-import bisect
-import json
-import math
-import os
-import statistics
-import sys
-import urllib.parse
-import urllib.request
+import os, sys, json, math, bisect, statistics, urllib.parse, urllib.request
 import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
@@ -55,16 +48,13 @@ def _probit(p):
     plow, phigh = 0.02425, 1 - 0.02425
     if p < plow:
         q = math.sqrt(-2 * math.log(p))
-        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
-                    (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+        return (((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
     if p > phigh:
         q = math.sqrt(-2 * math.log(1 - p))
-        return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
-                    (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1)
+        return -(((((c[0]*q+c[1])*q+c[2])*q+c[3])*q+c[4])*q+c[5]) / ((((d[0]*q+d[1])*q+d[2])*q+d[3])*q+1)
     q = p - 0.5
     r = q * q
-    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (
-                ((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1)
+    return (((((a[0]*r+a[1])*r+a[2])*r+a[3])*r+a[4])*r+a[5])*q / (((((b[0]*r+b[1])*r+b[2])*r+b[3])*r+b[4])*r+1)
 
 
 def expected_max_normal(n):
@@ -151,7 +141,6 @@ def _fetch_month(path, name_tags, lawd_cd, key, ym):
                 if e is not None and e.text:
                     return e.text.strip()
             return ""
-
         amt = g("dealAmount", "거래금액").replace(",", "")
         if not amt:
             continue
@@ -185,9 +174,9 @@ def fetch_lawd_trades(typ, lawd_cd, key, months, mcache, cur_ym):
     rows, new = [], {}
     for ym in recent_months(months):
         ck = f"{typ}|{lawd_cd}|{ym}"
-        if ym < cur_ym and ck in mcache:  # 지난 달 → 캐시(변동 없음)
+        if ym < cur_ym and ck in mcache:              # 지난 달 → 캐시(변동 없음)
             month = mcache[ck]
-        else:  # 이번 달(변동) 또는 미캐시 → 조회
+        else:                                         # 이번 달(변동) 또는 미캐시 → 조회
             try:
                 month = _fetch_month(path, name_tags, lawd_cd, key, ym)
             except Exception:  # noqa: BLE001
@@ -222,7 +211,7 @@ def trade_info(prop, cache):
     bys = [r[4] for r in rows if r[4]]
     info = {"molit_count": len(rows), "molit_low": min(prices), "molit_high": max(prices)}
     if bys:
-        info["build_year"] = max(set(bys), key=bys.count)  # 최빈 건축년도
+        info["build_year"] = max(set(bys), key=bys.count)     # 최빈 건축년도
     area = prop.get("exclusive_area")
     if area:
         info["price_per_pyeong"] = int(statistics.median(prices) / (area / 3.3058))
@@ -247,7 +236,7 @@ def build_trade_cache(props, key, months=6, workers=8):
         for k, rows, new in ex.map(work, uniq):
             cache[k] = rows
             mcache.update(new)
-    keep = set(recent_months(months + 1))  # 오래된 월 캐시 정리
+    keep = set(recent_months(months + 1))                 # 오래된 월 캐시 정리
     mcache = {ck: v for ck, v in mcache.items() if ck.rsplit("|", 1)[-1] in keep}
     _save_json("molit-cache.json", mcache)
     print(f"[analyze] 시세: {len(uniq)}개 (유형·시군구) — 지난달 캐시 재사용, 이번달만 조회", file=sys.stderr, flush=True)
@@ -274,7 +263,6 @@ def _apt_list(lawd, key):
             def g(t):
                 e = it.find(t)
                 return e.text.strip() if e is not None and e.text else ""
-
             nm, code = (g("kaptName") or g("kaptNm")), g("kaptCode")
             if nm and code:
                 out.append((nm, code))
@@ -308,7 +296,6 @@ def _apt_basis(code, key):
             if d.get(k):
                 return d[k]
         return ""
-
     info = {}
     if g("kaptdaCnt").isdigit():
         info["households"] = int(g("kaptdaCnt"))
@@ -340,8 +327,8 @@ def build_apt_cache(props, key, workers=6):
     apts = [p for p in props if p.get("type") == "아파트" and p.get("lawd_cd") and (p.get("apt_name") or "").strip()]
     if not apts:
         return {}
-    list_cache = _load_json("apt-list-cache.json")  # {lawd: {"ts": ordinal, "list": [[name,code],...]}}
-    info_cache = _load_json("apt-info-cache.json")  # {kaptCode: {정적 단지정보}}
+    list_cache = _load_json("apt-list-cache.json")   # {lawd: {"ts": ordinal, "list": [[name,code],...]}}
+    info_cache = _load_json("apt-info-cache.json")   # {kaptCode: {정적 단지정보}}
     today = datetime.now(timezone(timedelta(hours=9))).toordinal()
     lawds = sorted({p["lawd_cd"] for p in apts})
     need_list = [l for l in lawds if not (list_cache.get(l) and today - list_cache[l].get("ts", 0) < 30)]
@@ -381,6 +368,36 @@ def floor_bucket(prop):
     return "mid"
 
 
+def income_value(prop, a):
+    """수익환원 가치: 연월세/목표수익률 + 보증금. 오피스텔·상가용.
+    물건에 임대 데이터(monthly_rent·lease_deposit)가 있으면 사용, 없으면 유형·면적 기반 기본값."""
+    v = (a.get("valuation") or {}).get(prop.get("type"))
+    if not v:
+        return None
+    area = prop.get("exclusive_area") or 0
+    monthly = prop.get("monthly_rent") or (area * v.get("monthly_per_m2", 0))
+    deposit = prop.get("lease_deposit")
+    if deposit is None:
+        deposit = int((prop.get("appraisal") or 0) * v.get("deposit_ratio", 0))
+    y = v.get("target_yield") or 0
+    if monthly <= 0 or y <= 0:
+        return None
+    return int(monthly * 12 / y + deposit)
+
+
+def valued_price(prop, cache, a):
+    """유형별 가치: 아파트/주거=실거래 시세, 오피스텔=min(시세,수익환산), 상가=수익환산(Cap Rate)."""
+    sale, src, n = market_price(prop, cache, a)
+    iv = income_value(prop, a)
+    if iv:
+        t = prop.get("type")
+        if t == "상가":                       # 감정가·시세 왜곡 큼 → 수익환원으로 재산출
+            return iv, f"{src}→수익환산(CapRate)", n
+        if sale and iv < sale:                # 오피스텔 등: 급매가·수익가치 중 낮은 값
+            return iv, f"{src}→수익환산(min)", n
+    return sale, src, n
+
+
 def market_price(prop, cache, a):
     """캐시된 시군구 실거래에서 단지·면적으로 필터 → 중앙값에 층·향 보정."""
     rows = matched_trades(prop, cache)
@@ -388,7 +405,7 @@ def market_price(prop, cache, a):
         prices = [r[0] for r in rows]
         base = statistics.median(prices)
         adj = 1 + a["floor_adj"].get(floor_bucket(prop), 0) \
-              + a["orientation_adj"].get(prop.get("orientation", ""), 0)
+                + a["orientation_adj"].get(prop.get("orientation", ""), 0)
         return int(base * adj), f"molit({len(prices)})+보정", len(prices)
     if prop.get("market_price_override"):
         return int(prop["market_price_override"]), "override", None
@@ -402,12 +419,12 @@ def acquisition_tax(price, area, a):
     if price <= 6e8:
         base = 0.01
     elif price <= 9e8:
-        base = (eok * 2 / 3 - 3) / 100  # 6~9억 구간 1~3% 선형
+        base = (eok * 2 / 3 - 3) / 100      # 6~9억 구간 1~3% 선형
     else:
         base = 0.03
-    tax = price * base * t["acq_edu_multiplier"]  # + 지방교육세(근사)
+    tax = price * base * t["acq_edu_multiplier"]   # + 지방교육세(근사)
     if area > 85:
-        tax += price * t["acq_nongtuk_over85"]  # 농특세
+        tax += price * t["acq_nongtuk_over85"]     # 농특세
     if t.get("multi_home"):
         tax += price * t["acq_multi_home_surcharge"]
     return tax
@@ -429,9 +446,9 @@ def capital_gains_tax(gain, months, a):
     if taxable <= 0:
         return 0.0
     if months < 12:
-        cgt = taxable * 0.70  # 1년 미만 단기중과
+        cgt = taxable * 0.70                        # 1년 미만 단기중과
     elif months < 24:
-        cgt = taxable * 0.60  # 2년 미만
+        cgt = taxable * 0.60                        # 2년 미만
     else:
         years = months // 12
         if t.get("cgt_single_home"):
@@ -440,8 +457,8 @@ def capital_gains_tax(gain, months, a):
             ltd = min(t["cgt_ltd_max"], years * t["cgt_ltd_rate_per_year"]) if years >= 3 else 0.0
         after = taxable * (1 - ltd)
         cgt = progressive(after, a["progressive_brackets"])
-        cgt += after * t.get("cgt_adjusted_surcharge", 0.0)  # 조정지역 다주택 중과 %p
-    cgt += cgt * t["cgt_local_surtax"]  # 지방소득세 10%
+        cgt += after * t.get("cgt_adjusted_surcharge", 0.0)   # 조정지역 다주택 중과 %p
+    cgt += cgt * t["cgt_local_surtax"]              # 지방소득세 10%
     return max(cgt, 0.0)
 
 
@@ -458,7 +475,7 @@ def cost_ctx(prop, sale, a):
     repair = area * a["repair_cost_per_m2"]
     broker = sale * a["brokerage_rate"]
     fixed = a["extra_fixed"]
-    arrear = area * a.get("unpaid_mgmt_reserve_m2", 0)  # 미납 관리비 예비비(공용부분 인수)
+    arrear = area * a.get("unpaid_mgmt_reserve_m2", 0)      # 미납 관리비 예비비(공용부분 인수)
     assumed = assumed_rights_cost(prop)
     mgmt = a["monthly_mgmt_fee"] * months
     return {"sale": sale, "months": months, "area": area, "assumed": assumed,
@@ -495,6 +512,8 @@ def net_profit(bid, sale, prop, a, ctx=None):
     return profit, (profit / invested if invested else 0), costs, items
 
 
+
+
 # ----------------------- 권리 위험도 -----------------------
 def rights_risk(prop):
     score, flags = 0, []
@@ -504,7 +523,7 @@ def rights_risk(prop):
     dep = prop.get("assumed_deposit") or 0
     if dep:
         score += min(30, dep / 1e8 * 25)
-        flags.append(f"인수보증금 {int(dep / 1e4):,}만")
+        flags.append(f"인수보증금 {int(dep/1e4):,}만")
     sr = prop.get("special_rights") or []
     if sr:
         score += min(35, len(sr) * 18)
@@ -548,7 +567,7 @@ def distribution_table(won_bid, reg_rights, tenants, region, a):
     cost = int(won_bid * a.get("auction_cost_rate", 0.015))
     pool = won_bid - cost
     g = _pt_group(region)
-    base = None  # 말소기준일
+    base = None                                    # 말소기준일
     for r in reg_rights:
         if r.get("type") in ("근저당", "근저당권", "압류", "가압류", "담보가등기") and r.get("date"):
             base = r["date"] if base is None else min(base, r["date"])
@@ -567,7 +586,7 @@ def distribution_table(won_bid, reg_rights, tenants, region, a):
                            "top": 0, "senior": False, "demand": True})
 
     remaining = pool
-    remaining -= min(remaining, sum(c["top"] for c in claims))  # 1) 최우선변제
+    remaining -= min(remaining, sum(c["top"] for c in claims))     # 1) 최우선변제
     rows, assumed = [], 0
     for c in sorted(claims, key=lambda c: c.get("date") or "9999"):  # 2) 날짜순 우선변제
         need = max(0, c["amount"] - c["top"])
@@ -708,7 +727,7 @@ def liquidity_score(prop, baselines, a, trade_count):
     """빠른 재매도 가능성 0~100. 실거래 회전율·유형·수요·면적·가격대 반영."""
     L = a["liquidity"]
     tliq = L["type"].get(prop.get("type"), 0.3)
-    _, _, bidders = base_ratio(prop, baselines)  # 지역·유형 수요(입찰자) 대리지표
+    _, _, bidders = base_ratio(prop, baselines)          # 지역·유형 수요(입찰자) 대리지표
     demand = min(1.0, bidders / 10.0)
     # 실거래 회전율: 실측 있으면 사용, 없으면(폴백) 수요로 대체
     tf = min(1.0, trade_count / L["trade_count_full"]) if trade_count is not None else demand
@@ -795,9 +814,9 @@ def composite_score(res, a):
 
     base = (w["liquidity"] * liq + w["margin"] * margin_s + w["sharpe"] * sharpe_s
             + w["rights"] * rights_s + w["win"] * win_s)
-    gate = a["liquidity_gate"] + (1 - a["liquidity_gate"]) * (liq / 100.0)  # 환금성 게이트
+    gate = a["liquidity_gate"] + (1 - a["liquidity_gate"]) * (liq / 100.0)   # 환금성 게이트
     total = base * gate
-    if res["net_profit"] <= 0:  # 순손실이면 상한 억제
+    if res["net_profit"] <= 0:                                   # 순손실이면 상한 억제
         total = min(total, 20)
     br = {"환금성": round(liq), "안전마진": round(margin_s), "위험조정수익": round(sharpe_s),
           "권리안전": round(rights_s), "낙찰가능성": round(win_s)}
@@ -821,9 +840,9 @@ def kelly_fraction(res, a):
 # ----------------------- 물건 분석 -----------------------
 def analyze_property(prop, baselines, a, history, cache, apt_info=None):
     appr = prop["appraisal"]
-    sale, src, trade_count = market_price(prop, cache, a)
+    sale, src, trade_count = valued_price(prop, cache, a)
     mean_adj, std, bidders, mean_raw, samples = ratio_and_bidders(prop, sale, baselines, history, a)
-    w_emp = min(0.6, len(samples) / 20.0) if samples else 0.0  # 실측 표본 많을수록 경험분포 가중↑
+    w_emp = min(0.6, len(samples) / 20.0) if samples else 0.0   # 실측 표본 많을수록 경험분포 가중↑
     liq = liquidity_score(prop, baselines, a, trade_count)
 
     # 승자의 저주 보정(공통가치 경매): 낙찰 = 내 평가가 최고였다는 뜻 → 조건부 기대가치는
@@ -832,11 +851,11 @@ def analyze_property(prop, baselines, a, history, cache, apt_info=None):
     cv = a.get("resale_cv", 0.06)
     wc = min(a.get("wc_cap", 0.20), cv * expected_max_normal(bidders))
     sale_eff = int(sale * (1 - wc))
-    ctx = cost_ctx(prop, sale_eff, a)  # 고정비용 1회 계산 → 재사용
+    ctx = cost_ctx(prop, sale_eff, a)                     # 고정비용 1회 계산 → 재사용
 
     strat, _ = bid_strategies(sale_eff, prop, a, appr, mean_adj, std, liq["score"], samples, w_emp, ctx)
     rec = max(strat["ev_optimal"], prop["min_bid"])
-    profit, roi, costs, items = net_profit(rec, sale_eff, prop, a, ctx)  # 보정가치 기준(보수적)
+    profit, roi, costs, items = net_profit(rec, sale_eff, prop, a, ctx)   # 보정가치 기준(보수적)
     win = success_prob(rec, appr, mean_adj, std, samples, w_emp)
     ev = win * profit
     risk = rights_risk(prop)
@@ -867,15 +886,14 @@ def analyze_property(prop, baselines, a, history, cache, apt_info=None):
            "rights_risk": risk, "liquidity": liq,
            "ratio_dist": {"mean": round(mean_adj, 1), "mean_raw": mean_raw, "std": round(std, 1)},
            "curve": curve}
-    res.update(trade_info(prop, cache))  # 건축년도·실거래건수·평단가·범위
+    res.update(trade_info(prop, cache))          # 건축년도·실거래건수·평단가·범위
     if apt_info:
-        res.update(apt_info)  # 세대수·동수·사용승인일
+        res.update(apt_info)                     # 세대수·동수·사용승인일
     res["score"], res["score_breakdown"] = composite_score(res, a)
     res["kelly_fraction"] = kelly_fraction(res, a)
     res["special"] = special_tags(prop, res.get("rights_risk"))
     res["checklist"] = analysis_checklist(prop, res)
-    res["distribution"] = distribution_table(res["recommended_bid"], prop.get("reg_rights"), prop.get("tenants"),
-                                             prop.get("region"), a)
+    res["distribution"] = distribution_table(res["recommended_bid"], prop.get("reg_rights"), prop.get("tenants"), prop.get("region"), a)
     return res
 
 
@@ -883,7 +901,7 @@ def analyze_property(prop, baselines, a, history, cache, apt_info=None):
 def predicted_bid(rec, baselines, a, cache):
     """과거/후보 물건에 현재 모델을 적용한 권장 입찰가(baseline만 사용해 누수 방지)."""
     appr = rec.get("appraisal") or 0
-    sale, _, _ = market_price(rec, cache, a)
+    sale, _, _ = valued_price(rec, cache, a)
     p = dict(rec)
     p.setdefault("min_bid", int(appr * (0.8 ** (rec.get("fail_rounds") or 0))))
     mean_adj, std, bidders, _, _ = ratio_and_bidders(p, sale, baselines, [], a)
@@ -909,7 +927,7 @@ def strategy_review(past, baselines, a, cache):
         would_win = my_bid >= won
         actual_ratio = 100 * won / appr
         my_ratio = 100 * my_bid / appr
-        biases.append(actual_ratio - mean_adj)  # +면 실제가 예측보다 높음(과소예측)
+        biases.append(actual_ratio - mean_adj)          # +면 실제가 예측보다 높음(과소예측)
         reason = None
         if not would_win:
             shortfall = (won - my_bid) / won
@@ -933,7 +951,7 @@ def strategy_review(past, baselines, a, cache):
         "n": n, "would_win": wins,
         "would_win_rate": round(wins / n, 3) if n else 0,
         "avg_shortfall_pct": round(statistics.mean(gaps), 3) if gaps else 0,
-        "ratio_bias": round(statistics.mean(biases), 1) if biases else 0,  # +면 낙찰가율 과소예측
+        "ratio_bias": round(statistics.mean(biases), 1) if biases else 0,   # +면 낙찰가율 과소예측
         "top_reasons": [{"reason": k, "n": v} for k, v in dom],
         "lesson": _lesson(dom, statistics.mean(biases) if biases else 0),
     }
@@ -997,12 +1015,12 @@ def realized_from_past(past, cache, a, baselines):
     """실제 낙찰 + 국토부 시세(매도가 추정) → 실현(추정) 수익률 + 내 예측 적정가."""
     out = []
     for rec in past:
-        sale, _, _ = market_price(rec, cache, a)  # 현재 시세 = 매도가 추정
+        sale, _, _ = valued_price(rec, cache, a)      # 현재 시세 = 매도가 추정
         won = rec.get("won_bid")
         if not won or not sale:
             continue
         _, _, costs, _ = net_profit(won, sale, rec, a)
-        my_bid, _, _ = predicted_bid(rec, baselines, a, cache)  # 내가 예측했을 적정가
+        my_bid, _, _ = predicted_bid(rec, baselines, a, cache)   # 내가 예측했을 적정가
         out.append({"id": rec["id"], "court": rec.get("court"), "case_no": rec.get("case_no"),
                     "region": rec.get("region"), "type": rec.get("type"),
                     "apt_name": rec.get("apt_name"), "appraisal": rec.get("appraisal"), "won_bid": won,
@@ -1025,7 +1043,7 @@ def main():
 
     past_real = load("past-results.json", []) or []
     if past_real:
-        past_real = filter_recent_history(past_real, lookback)  # 최근 N일 낙찰만
+        past_real = filter_recent_history(past_real, lookback)   # 최근 N일 낙찰만
         cache = build_trade_cache(props + past_real, key, months, workers)
         history = realized_from_past(past_real, cache, a, baselines)
         hsrc = "실제 낙찰가 + 국토부 시세(매도가 추정)"
@@ -1038,6 +1056,38 @@ def main():
     apt_cache = build_apt_cache(props, key) if a.get("fetch_apt_details", True) else {}
     results = [analyze_property(p, baselines, a, history, cache, apt_cache.get(p["id"])) for p in props]
     results.sort(key=lambda r: r["score"], reverse=True)
+
+    # 점수 상위 물건에 courtauction 실제 사진(HAR 상세) 자동 수집 — 영구 캐시
+    photo_n = a.get("photo_top_n", 12)
+    if photo_n and results:
+        try:
+            import crawl
+            pcache = _load_json("photo-detail-cache.json")
+            by_id = {p.get("id"): p for p in props}
+            opener, added = None, 0
+            for r in results[:photo_n]:
+                if r.get("photos"):
+                    continue
+                pid = r.get("id")
+                shot = pcache.get(pid)
+                if shot is None:
+                    src = by_id.get(pid) or {}
+                    court, case = src.get("bo_cd"), src.get("case_no")
+                    if not (court and case):
+                        continue
+                    if opener is None:
+                        opener = crawl.make_opener()
+                    d = crawl.fetch_detail(opener, court, case, src.get("maemul_ser", 1))
+                    shot = (d.get("photos") or []) if d else []
+                    pcache[pid] = shot
+                if shot:
+                    r["photos"] = shot
+                    added += 1
+            save("photo-detail-cache.json", pcache)
+            if added:
+                print(f"[analyze] 물건 사진: 상위 {photo_n}건 중 {added}건 수집(courtauction 상세)", flush=True)
+        except Exception as e:  # noqa: BLE001
+            print(f"[analyze] 사진 수집 건너뜀: {type(e).__name__}", file=sys.stderr)
     save("analysis.json", {
         "generated_at": datetime.now(timezone(timedelta(hours=9))).isoformat(),
         "market_source_used": "molit_api" if key else "fallback(override/appraisal)",
@@ -1054,13 +1104,13 @@ def main():
         review["how_to_use"] = "이 파일을 업로드하면 예측 vs 실제 낙찰 오차·패인을 근거로 baselines/assumptions를 고도화합니다."
         save("backtest.json", review)
         print(f"[analyze] 전략 백테스트 → data/backtest.json "
-              f"(적중률 {review['summary']['would_win_rate'] * 100:.0f}%)", flush=True)
+              f"(적중률 {review['summary']['would_win_rate']*100:.0f}%)", flush=True)
     print(f"[analyze] 완료: {len(results)}건 → data/analysis.json", flush=True)
     for r in results:
         lq = r["liquidity"]
         print(f'  [{r["score"]:>3}점] {r["apt_name"] or r["type"]} {r["region"]}: '
-              f'적정 {r["recommended_bid"]:,} / 성공률 {r["success_prob"] * 100:.0f}% / '
-              f'순이익 {r["net_profit"]:,}(ROI {r["roi"] * 100:.1f}%) / '
+              f'적정 {r["recommended_bid"]:,} / 성공률 {r["success_prob"]*100:.0f}% / '
+              f'순이익 {r["net_profit"]:,}(ROI {r["roi"]*100:.1f}%) / '
               f'환금성 {lq["grade"]}({lq["score"]}) / 권리 {r["rights_risk"]["level"]}')
 
 

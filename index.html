@@ -1,106 +1,74 @@
 <!doctype html>
 <html lang="ko">
 <head>
-    <meta charset="utf-8"/>
-    <meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
-    <title>경매 분석</title>
-    <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css"
-          rel="stylesheet"/>
-    <link href="assets/app.css" rel="stylesheet">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>경매 분석</title>
+<link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
+<link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-<header>
-    <div class="hd">
-        <span class="dot"></span><span class="brand">경매 분석</span>
-        <span class="upd" id="upd"></span>
-    </div>
-</header>
+<header><div class="hd">
+  <span class="dot"></span><span class="brand">경매 분석</span>
+  <span class="upd" id="upd"></span>
+</div></header>
 
-<div class="seg">
-    <div class="in">
-        <button class="on" data-tab="now">현재 매물</button>
-        <button data-tab="past">과거 실적</button>
-        <button data-tab="method">산정 방법</button>
-        <button data-tab="guide">가이드</button>
-    </div>
-</div>
+<div class="seg"><div class="in">
+  <button class="on" data-tab="now">현재 매물</button>
+  <button data-tab="past">과거 실적</button>
+  <button data-tab="method">산정 방법</button>
+  <button data-tab="guide">가이드</button>
+</div></div>
 
 <main class="wrap">
-    <div id="tab-now">
-        <div class="controls">
-            <input autocomplete="off" class="search" id="q" placeholder="단지명 · 지역 · 사건번호 검색" type="search">
-            <div class="chips" id="themes"></div>
-            <div class="selects">
-                <select id="region">
-                    <option value="">전체 지역</option>
-                </select>
-                <select id="typesel">
-                    <option value="전체">전체 유형</option>
-                </select>
-                <select id="verdict">
-                    <option value="">전체 판정</option>
-                    <option>입찰 적합</option>
-                    <option>조건부</option>
-                    <option>보류</option>
-                </select>
-                <select id="special">
-                    <option value="">특수 전체</option>
-                </select>
-                <select id="sort">
-                    <option value="score">종합점수순</option>
-                    <option value="roi">수익률순</option>
-                    <option value="profit">순이익순</option>
-                    <option value="win">성공률순</option>
-                    <option value="sched">매각임박순</option>
-                </select>
-                <button class="favtoggle" id="favbtn">☆ 관심</button>
-            </div>
-        </div>
-        <div class="kpibar" id="kpibar"></div>
-        <div class="sortrow"><span id="cnt"></span></div>
-        <div class="feed" id="feed"></div>
-        <button class="morebtn" hidden id="more"></button>
+  <div id="tab-now">
+    <div class="controls">
+      <input id="q" class="search" type="search" placeholder="단지명 · 지역 · 사건번호 검색" autocomplete="off">
+      <div class="chips" id="themes"></div>
+      <div class="selects">
+        <select id="region"><option value="">전체 지역</option></select>
+        <select id="typesel"><option value="전체">전체 유형</option></select>
+        <select id="verdict"><option value="">전체 판정</option><option>입찰 적합</option><option>조건부</option><option>보류</option></select>
+        <select id="special"><option value="">특수 전체</option></select>
+        <select id="sort">
+          <option value="score">종합점수순</option>
+          <option value="roi">수익률순</option>
+          <option value="profit">순이익순</option>
+          <option value="win">성공률순</option>
+          <option value="sched">매각임박순</option>
+        </select>
+        <button id="favbtn" class="favtoggle">☆ 관심</button>
+      </div>
     </div>
+    <div class="kpibar" id="kpibar"></div>
+    <div class="sortrow"><span id="cnt"></span></div>
+    <div class="feed" id="feed"></div>
+    <button id="more" class="morebtn" hidden></button>
+  </div>
 
-    <div hidden id="tab-past">
-        <h1>과거 경매 실적</h1>
-        <p class="sub" id="pastSub"></p>
-        <div id="mstat"></div>
-        <div class="controls">
-            <input autocomplete="off" class="search" id="pq" placeholder="지역 · 단지 · 유형 검색" type="search">
-            <div class="selects">
-                <select id="pregion">
-                    <option value="">전체 지역</option>
-                </select>
-                <select id="ptype">
-                    <option value="">전체 유형</option>
-                </select>
-                <select id="psort">
-                    <option value="roi">수익률순</option>
-                    <option value="ratio">낙찰가율순</option>
-                    <option value="win">낙찰가순</option>
-                </select>
-            </div>
-        </div>
-        <div class="kpis" id="pastKpi"></div>
-        <div class="sortrow"><span id="pcnt"></span></div>
-        <div class="feed" id="pastFeed"></div>
-        <button class="morebtn" hidden id="pmore"></button>
-        <div class="msec" style="margin-top:8px"><h3 style="font-size:14px">지역·유형별 평균 낙찰가율</h3>
-            <div id="bars"></div>
-        </div>
+  <div id="tab-past" hidden>
+    <h1>과거 경매 실적</h1>
+    <p class="sub" id="pastSub"></p>
+    <div id="mstat"></div>
+    <div class="controls">
+      <input id="pq" class="search" type="search" placeholder="지역 · 단지 · 유형 검색" autocomplete="off">
+      <div class="selects">
+        <select id="pregion"><option value="">전체 지역</option></select>
+        <select id="ptype"><option value="">전체 유형</option></select>
+        <select id="psort"><option value="roi">수익률순</option><option value="ratio">낙찰가율순</option><option value="win">낙찰가순</option></select>
+      </div>
     </div>
+    <div class="kpis" id="pastKpi"></div>
+    <div class="sortrow"><span id="pcnt"></span></div>
+    <div class="feed" id="pastFeed"></div>
+    <button id="pmore" class="morebtn" hidden></button>
+    <div class="msec" style="margin-top:8px"><h3 style="font-size:14px">지역·유형별 평균 낙찰가율</h3><div id="bars"></div></div>
+  </div>
 
-    <div hidden id="tab-method">
-        <div id="method"></div>
-    </div>
-    <div hidden id="tab-guide">
-        <div id="guide"></div>
-    </div>
+  <div id="tab-method" hidden><div id="method"></div></div>
+  <div id="tab-guide" hidden><div id="guide"></div></div>
 
-    <footer>시세·세율·부대비용·확률·수익률은 공개 데이터 기반 자동 추정이며 투자 자문이 아닙니다. 과거 실적의 매도가는 낙찰 후 시세 기준 추정입니다. 입찰 전 매각물건명세서·현황조사서를 반드시 직접
-        확인하세요.
-    </footer>
+  <footer>시세·세율·부대비용·확률·수익률은 공개 데이터 기반 자동 추정이며 투자 자문이 아닙니다. 과거 실적의 매도가는 낙찰 후 시세 기준 추정입니다. 입찰 전 매각물건명세서·현황조사서를 반드시 직접 확인하세요.</footer>
 </main>
 
 <script src="assets/app.js"></script>

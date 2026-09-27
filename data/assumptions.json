@@ -116,5 +116,18 @@
   "molit_workers": 8,
   "wc_cap": 0.2,
   "unpaid_mgmt_reserve_m2": 15000,
-  "auction_cost_rate": 0.015
+  "auction_cost_rate": 0.015,
+  "photo_top_n": 12,
+  "valuation": {
+    "오피스텔": {
+      "target_yield": 0.06,
+      "monthly_per_m2": 18000,
+      "deposit_ratio": 0.08
+    },
+    "상가": {
+      "target_yield": 0.065,
+      "monthly_per_m2": 30000,
+      "deposit_ratio": 0.1
+    }
+  }
 }

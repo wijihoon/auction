@@ -15,10 +15,7 @@
 
 표준 라이브러리만 사용.
 """
-import json
-import os
-import statistics
-import sys
+import os, sys, json, statistics
 from datetime import datetime, timezone, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -67,7 +64,7 @@ def snapshot_predictions(analysis, predictions):
         cur = predictions.get(r["id"])
         if cur:
             cur["first_seen"] = cur.get("first_seen", day)
-            cur["last"] = pred  # 최신 예측 유지(기일 임박 예측이 채점 기준)
+            cur["last"] = pred            # 최신 예측 유지(기일 임박 예측이 채점 기준)
         else:
             predictions[r["id"]] = {"first_seen": day, "last": pred}
     return predictions
@@ -111,15 +108,14 @@ def build_calibration(predictions, outcomes, assumptions):
 
         err = {}
         if actual_ratio is not None and p.get("predicted_ratio_mean") is not None:
-            err["ratio_err"] = round(actual_ratio - p["predicted_ratio_mean"], 1)  # +면 실제가 더 높음
+            err["ratio_err"] = round(actual_ratio - p["predicted_ratio_mean"], 1)   # +면 실제가 더 높음
         if out.get("bidders") is not None and p.get("expected_bidders") is not None:
             err["bidders_err"] = round(out["bidders"] - p["expected_bidders"], 1)
         if p.get("predicted_win_prob") is not None:
             err["win_brier"] = round((p["predicted_win_prob"] - (1 if would_win else 0)) ** 2, 3)
         if actual_profit is not None and p.get("predicted_net_profit"):
             err["profit_err"] = int(actual_profit - p["predicted_net_profit"])
-            err["profit_err_pct"] = round((actual_profit - p["predicted_net_profit"]) / abs(p["predicted_net_profit"]),
-                                          3)
+            err["profit_err_pct"] = round((actual_profit - p["predicted_net_profit"]) / abs(p["predicted_net_profit"]), 3)
         if resale and p.get("market_price"):
             err["resale_vs_market_pct"] = round((resale - p["market_price"]) / p["market_price"], 3)
 
@@ -179,7 +175,7 @@ def summarize(records, assumptions):
     mb = _bias(mkt_e)
     if mb is not None and abs(mb) >= 0.03:
         sign = "높게" if mb > 0 else "낮게"
-        sug.append(f"실제 재매도가가 예측 시세보다 평균 {mb * 100:+.0f}% {sign} 형성 → 시세 추정(층·향 보정·중앙값) 재보정")
+        sug.append(f"실제 재매도가가 예측 시세보다 평균 {mb*100:+.0f}% {sign} 형성 → 시세 추정(층·향 보정·중앙값) 재보정")
 
     return {
         "n_resolved": len(records), "n_with_resale": n_resale,

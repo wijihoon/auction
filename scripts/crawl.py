@@ -76,7 +76,7 @@ def region_from_address(addr):
     p = addr.split()
     sido = p[0]
     short = ("서울" if "서울" in sido else "인천" if "인천" in sido
-    else "경기" if "경기" in sido else sido.replace("특별시", "").replace("광역시", "").replace("도", ""))
+             else "경기" if "경기" in sido else sido.replace("특별시", "").replace("광역시", "").replace("도", ""))
     if short in ("서울", "인천"):
         for t in p[1:]:
             if t.endswith("구") or t.endswith("군"):
@@ -383,7 +383,7 @@ def crawl_past(cfg):
     f = {"sido": cfg.get("sido", ["서울특별시", "경기도", "인천광역시"]),
          "usage": cfg.get("usage", ["아파트", "오피스텔", "연립다세대", "다세대", "연립", "빌라"]),
          "min_appr": cfg.get("min_appraisal", 50000000), "max_appr": cfg.get("max_appraisal", 5000000000)}
-    days = cfg.get("past_history_days", 60)
+    days = cfg.get("past_history_days", 30)
     workers = cfg.get("max_workers", 8)
     timeout = cfg.get("request_timeout_sec", 12)
     retries = cfg.get("max_retries", 3)
@@ -414,12 +414,9 @@ def crawl_past(cfg):
         chunk = pages[i:i + 20]
         with ThreadPoolExecutor(max_workers=workers) as ex:
             res = list(ex.map(lambda p: fetch_past_page(opener, p, timeout, retries)[0], chunk))
-        before = len(out)
         for rows in res:
             take(rows)
         print(f"[past] ~{chunk[-1]}/{total_pages}p · 누적 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
-        if out and len(out) == before:            # 최근 구간을 지나 더 안 늘면 종료
-            break
     print(f"[past] 완료: 낙찰 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
     return out
 
@@ -453,7 +450,7 @@ def parse_detail(res):
     dd = demn[0].get("dstrtDemnLstprdYmd") if demn else None
     demand_end = f"{dd[:4]}-{dd[4:6]}-{dd[6:]}" if (dd and len(str(dd)) == 8) else None
     objs = res.get("gdsDspslObjctLst") or [{}]
-    return {"photos": photos[:4], "schedule": schedule,
+    return {"photos": photos, "schedule": schedule,
             "detail_note": (spec[:400] or None), "base_date": base_date,
             "claim_amt": _to_int(b.get("clmAmt")) or None, "demand_end": demand_end,
             "ecdoc_id": g.get("dspslGdsSpcfcEcdocId") or None,
@@ -467,8 +464,8 @@ def fetch_detail(opener, court_cd, cs_no, seq, timeout=15, retries=2):
                "SC-Pgmid": "PGJ15BM01", "submissionid": "mf_wfm_mainFrame_sbm_selectGdsDtlSrchDtlInfo",
                "Referer": BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml"}
     payload = {"dma_srchGdsDtlSrch": {"csNo": cs_no, "cortOfcCd": court_cd, "dspslGdsSeq": str(seq),
-                                      "pgmId": "PGJ151F01", "srchInfo": {"bidDvsCd": "000331", "mvprpRletDvsCd": "00031R",
-                                                                         "cortAuctnSrchCondCd": "0004601", "cortOfcCd": court_cd}}}
+               "pgmId": "PGJ151F01", "srchInfo": {"bidDvsCd": "000331", "mvprpRletDvsCd": "00031R",
+               "cortAuctnSrchCondCd": "0004601", "cortOfcCd": court_cd}}}
     for attempt in range(retries):
         try:
             req = urllib.request.Request(DETAIL_EP, data=json.dumps(payload).encode("utf-8"),
@@ -505,8 +502,8 @@ def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pa
         # 1) courtauction: encParam 발급(+세션)
         r1 = _post_json(opener, BASE + "/pgj/pgj15B/insertDspslGdsSpecArtcWdrwInf.on",
                         {"dma_dspslGdsSpecLog": {"cortOfcCd": court, "csNo": cs_no14,
-                                                 "dspslGdsSeq": int(seq or 1), "orvParam": orv_param or "",
-                                                 "dspslGdsSpcfcEcdocId": ecdoc_id}}, BASE + "/pgj/index.on")
+                         "dspslGdsSeq": int(seq or 1), "orvParam": orv_param or "",
+                         "dspslGdsSpcfcEcdocId": ecdoc_id}}, BASE + "/pgj/index.on")
         info = (r1.get("data") or {}).get("dma_dspslSpcfcInfo") or {}
         enc, ecfs_url = info.get("encParam"), info.get("url")
         if not (enc and ecfs_url):
@@ -515,13 +512,13 @@ def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pa
         try:
             sep = "&" if "?" in ecfs_url else "?"
             opener.open(urllib.request.Request(ecfs_url + sep + "encParam=" + enc,
-                                               headers={"User-Agent": UA}), timeout=timeout_default()).read()
+                        headers={"User-Agent": UA}), timeout=timeout_default()).read()
         except Exception:  # noqa: BLE001
             pass
         # 3) getPdf → streamdocsId
         r3 = _post_json(opener, ECFS + "/sgvo/sgvomain/getPdf.on",
                         {"dma_srchEdms": {"ecdocId": ecdoc_id, "ecdocDtlSeq": "1",
-                                          "csNo": cs_no14, "extnlUserYn": "Y", "bubviewerYn": "N", "jobKind": "JH"}},
+                         "csNo": cs_no14, "extnlUserYn": "Y", "bubviewerYn": "N", "jobKind": "JH"}},
                         ECFS + "/sgvo/websquare/websquare.html")
         sdoc = (r3.get("data") or {}).get("streamdocsId")
         if not sdoc:
@@ -531,7 +528,7 @@ def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pa
         for n in range(max_pages):
             try:
                 req = urllib.request.Request(f"{SDOC}/{sdoc}/texts/{n}",
-                                             headers={"User-Agent": UA, "Referer": "https://pvo.scourt.go.kr/streamdocs/view"})
+                      headers={"User-Agent": UA, "Referer": "https://pvo.scourt.go.kr/streamdocs/view"})
                 pages[n] = json.loads(opener.open(req, timeout=15).read().decode("utf-8"))
             except Exception:  # noqa: BLE001
                 break

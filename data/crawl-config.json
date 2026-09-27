@@ -8,7 +8,9 @@
   "usage": [
     "아파트",
     "오피스텔",
-    "연립다세대"
+    "연립다세대",
+    "상가",
+    "근린생활시설"
   ],
   "min_appraisal": 300000000,
   "sale_date_from_days": 0,
@@ -20,5 +22,5 @@
   "request_timeout_sec": 12,
   "max_retries": 3,
   "socket_timeout_sec": 15,
-  "past_history_days": 60
+  "past_history_days": 30
 }

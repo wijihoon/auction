@@ -24,6 +24,7 @@ function card(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rights_
   const costs=Object.entries(r.cost_items||{}).map(([k,v])=>v?`<tr><td>− ${k}</td><td>${won(v)}원</td></tr>`:"").join("");
   const py=r.price_per_pyeong?Math.round(r.price_per_pyeong/1e4).toLocaleString()+"만원/평":null;const rng=(r.molit_low&&r.molit_high)?won(r.molit_low)+"~"+won(r.molit_high)+"원":null;const built=r.approve_date?String(r.approve_date).slice(0,4):(r.built_year||r.build_year);const info=[["소재지",r.address],["건물내역",r.building_detail],["세대수",r.households?r.households.toLocaleString()+"세대"+(r.dong_count?" · "+r.dong_count+"개동":""):null],["층",r.floor?(r.floor+"층"+(r.total_floors?" / 총 "+r.total_floors+"층":"")):null],["준공",built?built+"년":null],["실거래(최근)",r.molit_count?r.molit_count+"건":null],["평단가",py],["최근 실거래가",rng],["매각기일",r.sale_date],["비고",r.note]].filter(x=>x[1]);
   const infoHTML=info.length?`<div class="dtitle">물건 정보</div><table class="kv">${info.map(([k,v])=>`<tr><td style="white-space:nowrap">${k}</td><td style="text-align:left;color:var(--tx);font-weight:500">${v}</td></tr>`).join("")}</table>`:"";
+  const photosHTML=(r.photos&&r.photos.length)?`<div class="photos">${r.photos.map(u=>`<img src="${u}" loading="lazy" alt="물건 사진">`).join("")}</div>`:"";
   return `<div class="card" data-i="${i}" data-type="${r.type}">
     <div class="chead">
       <div class="score ${scc}">${r.score}</div>
@@ -42,7 +43,7 @@ function card(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rights_
     <div class="rrow"><span class="rk ${rkc}">권리 ${rk.level}</span>${hi?`<span class="warnbadge">⚠ 인수주의 ${hi}</span>`:""}${flags}${sp}</div>
     <button class="more" onclick="toggle(this)">자세히 보기</button>
     <div class="detail">
-      ${infoHTML}<div class="dtitle">입찰 전략가</div>
+      ${photosHTML}${infoHTML}<div class="dtitle">입찰 전략가</div>
       <div class="strat">
         <div class="st"><div class="l">보수</div><div class="v">${won(st.safe_max)}</div></div>
         <div class="st rec"><div class="l">권장</div><div class="v">${won(r.recommended_bid)}</div></div>
@@ -181,18 +182,39 @@ function renderMethod(){const w=(AN.assumptions&&AN.assumptions.score_weights)||
 
   <div class="msec"><h3>매도가 (추정)</h3>
     <p><span class="lead">낙찰 후 되팔 때의 예상 가격입니다.</span></p>
-    <p>해당 호실의 실제 재매도가는 공개되지 않아, 같은 단지·유사 면적의 <b>국토부 실거래가 중앙값</b>을 매도가로 씁니다. 실측이 아닌 시세 기준 추정치입니다.</p></div>
+    <p>유형에 따라 다르게 평가합니다:</p>
+    <ul class="mlist">
+      <li><b>아파트·주거</b> — 같은 단지·유사 면적 <b>국토부 실거래가 중앙값</b>(층·향 보정)</li>
+      <li><b>오피스텔</b> — <b>min(시세, 수익환산가)</b>. 수익환산가 = 연월세 ÷ 목표수익률 + 보증금</li>
+      <li><b>상가</b> — 감정가·시세 왜곡이 커서 <b>Cap Rate 환산</b>으로 재산출: 연 순임대료 ÷ Cap Rate + 보증금</li></ul>
+    <p style="font-size:12.5px;color:var(--mut)">임대 시세(월세·보증금)는 물건 데이터가 있으면 사용하고, 없으면 유형·면적 기반 기본값을 씁니다.</p></div>
 
   <div class="msec"><h3>적정 입찰가</h3>
     <p><span class="lead">두 단계로 계산합니다.</span></p>
     <div class="step"><span class="n">1</span><span class="t"><b>승자의 저주 보정</b><br>낙찰됐다는 건 내 평가가 응찰자 중 가장 높았다는 뜻이라, 실제 가치는 시세보다 낮게 봅니다. 경쟁·불확실성이 클수록 더 보수적으로 잡습니다.</span></div>
     <div class="formula">보정가치 = 시세 × (1 − 변동계수 × 응찰자수 보정)</div>
-    <div class="step"><span class="n">2</span><span class="t"><b>기대가치 최적화</b><br>실제 낙찰가율 분포로 낙찰 확률을 구하고, <b>낙찰확률 × 보정순이익</b>이 가장 큰 가격을 찾습니다.</span></div>
-    <p>결과는 <b>보수 · 권장 · 공격</b> 세 가격으로 제시합니다.</p></div>
+    <div class="step"><span class="n">2</span><span class="t"><b>기대가치 최적화</b><br>실제 낙찰가율 분포로 낙찰 확률을 구하고, <b>낙찰확률 × 보정순이익</b>이 가장 큰 가격을 찾습니다(1차가격 봉인입찰 이론).</span></div>
+    <div class="formula">적정가 = argmax( 낙찰확률(입찰가) × 보정순이익(입찰가) )</div>
+    <p>결과는 세 가격으로 제시합니다:</p>
+    <ul class="mlist">
+      <li><b>권장</b> — 기대가치가 가장 큰 입찰가(위 최적화 결과)</li>
+      <li><b>보수</b> — 환금성을 반영한 목표수익률을 지키는 <b>상한선</b>(안전마진 큼)</li>
+      <li><b>공격</b> — 목표 낙찰확률을 확보하는 최소 입찰가(경쟁 우위)</li></ul>
+    <p style="font-size:12.5px;color:var(--mut)">자금 배분은 켈리 공식(하프켈리)으로 참고 제시합니다.</p></div>
 
   <div class="msec"><h3>낙찰 성공률</h3>
     <p><span class="lead">내 입찰가로 낙찰될 확률입니다.</span></p>
     <p>지역·유형별 <b>실제 낙찰가율 분포</b>(과거 낙찰로 학습)에 경쟁도(예상 응찰자)를 반영한 뒤, 내 입찰가율이 그 분포에서 이길 확률로 계산합니다.</p></div>
+
+  <div class="msec"><h3>예상 배당표 · 권리분석</h3>
+    <p><span class="lead">임차보증금 등 낙찰자가 떠안는 금액(인수)을 계산합니다.</span></p>
+    <p>매각물건명세서의 임차인 내역(보증금·전입·확정·배당요구)과 등기 권리를 바탕으로 배당 순서를 따집니다:</p>
+    <div class="formula">낙찰가 − 경매비용 → 소액임차인 최우선변제 → (확정일자·근저당) 날짜순 우선변제</div>
+    <ul class="mlist">
+      <li><b>말소기준권리</b>(최선순위 근저당 등)보다 앞선 대항력 임차인이 배당에서 못 받은 잔액은 <b>낙찰자 인수</b></li>
+      <li>후순위 권리는 매각으로 소멸</li>
+      <li>인수 예상액은 순이익에서 차감됩니다</li></ul>
+    <p style="font-size:12.5px;color:var(--mut)">등기·임차 원문 데이터가 있을 때 계산되며, 실제 배당은 법원 판단입니다.</p></div>
 
   <div class="msec"><h3>예상 순이익 · 투자수익률</h3>
     <div class="formula">순이익 = 보정 매도가 − 낙찰가 − 부대비용</div>
@@ -200,6 +222,7 @@ function renderMethod(){const w=(AN.assumptions&&AN.assumptions.score_weights)||
     <ul class="mlist">
       <li>취득세 · <b>양도세</b> (보유기간별 세율·중과 반영)</li>
       <li>명도비 · 수리비 · 보유비용 · 매도 중개보수</li>
+      <li><b>미납 관리비</b> (공용부분, 낙찰자 인수분 예비비)</li>
       <li>인수해야 할 권리 (임차보증금 등)</li></ul>
     <div class="formula">투자수익률(ROI) = 순이익 ÷ 투자원금</div>
     <p>투자원금은 낙찰가 + 취득비용 + 인수권리를 합한 값입니다.</p></div>

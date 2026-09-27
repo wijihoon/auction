@@ -17,18 +17,9 @@
 
 표준 라이브러리만 사용.
 """
+import os, sys, json, re, ssl, time, math, random, socket, threading
 import http.cookiejar
-import json
-import math
-import os
-import random
-import re
-import socket
-import ssl
-import sys
-import time
-import urllib.error
-import urllib.request
+import urllib.request, urllib.error
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
@@ -44,8 +35,6 @@ def _load_cfg(name, default):
         except Exception:
             return default
     return default
-
-
 OUT = os.path.join(DATA, "properties.json")
 KST = timezone(timedelta(hours=9))
 
@@ -53,7 +42,6 @@ BASE = "https://www.courtauction.go.kr"
 SEARCH_EP = BASE + "/pgj/pgjsearch/searchControllerMain.on"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-
 
 # 용도 표시명 → 공용 스키마 type
 def type_from_usage(u):
@@ -118,18 +106,18 @@ def extract_floor(text):
 def extract_apt_name(addr, bld):
     """단지/건물명 추정. ①도로명주소 '(동명, 건물명)'의 건물명 → ②접미사 패턴 → ③동명 폴백."""
     addr = addr or ""
-    for grp in re.findall(r'\(([^)]+)\)', addr):  # ① "(매탄동, 매탄위브하늘채)" → 콤마 뒤 건물명
+    for grp in re.findall(r'\(([^)]+)\)', addr):      # ① "(매탄동, 매탄위브하늘채)" → 콤마 뒤 건물명
         if "," in grp:
             nm = grp.split(",")[-1].strip()
             if nm and not re.fullmatch(r'[\d\-.,\s]+', nm) and not nm.endswith(("동", "호", "층", "가")):
                 return nm
     suffix = ("|".join(_TEXT_RULES.get("apt_suffixes", ["아파트"])) or "아파트")
     pat = re.compile(r'([가-힣A-Za-z0-9]{2,}(?:%s)\d*(?:단지)?)' % suffix)
-    for src in (bld or "", addr):  # ② 건물명 접미사
+    for src in (bld or "", addr):                     # ② 건물명 접미사
         m = pat.search(src)
         if m:
             return m.group(1)
-    m = re.search(r'([가-힣]+(?:동|읍|면))', addr)  # ③ 동/읍/면 폴백
+    m = re.search(r'([가-힣]+(?:동|읍|면))', addr)      # ③ 동/읍/면 폴백
     return m.group(1) if m else ""
 
 
@@ -244,8 +232,7 @@ def row_to_item(row, f):
     item = {"id": f"{court}_{case}_{seq}", "court": court, "case_no": case, "address": addr,
             "region": region_from_address(addr), "type": type_from_usage(usage),
             "apt_name": extract_apt_name(addr, bld),
-            "lawd_cd": (row.get("srchHjguSiguCd") if (str(row.get("srchHjguSiguCd") or "").isdigit() and len(
-                str(row.get("srchHjguSiguCd"))) == 5) else lawd_from_address(addr)),
+            "lawd_cd": (row.get("srchHjguSiguCd") if (str(row.get("srchHjguSiguCd") or "").isdigit() and len(str(row.get("srchHjguSiguCd")))==5) else lawd_from_address(addr)),
             "exclusive_area": extract_area(bld), "floor": extract_floor(row.get("buldList") or bld),
             "total_floors": int(tf.group(1)) if tf else None,
             "built_year": int(by.group(1)) if by else None,
@@ -254,8 +241,7 @@ def row_to_item(row, f):
             "usage_detail": usage or None, "views": _to_int(row.get("inqCnt")), "dept": row.get("jpDeptNm") or None,
             "appraisal": appr, "min_bid": _to_int(row.get("minmaePrice"), appr),
             "fail_rounds": _to_int(row.get("yuchalCnt")), "sale_date": sale_date,
-            "eviction": "normal", "market_price_override": None, "photos": [], "bo_cd": row.get("boCd"),
-            "maemul_ser": seq,
+            "eviction": "normal", "market_price_override": None, "photos": [], "bo_cd": row.get("boCd"), "maemul_ser": seq,
             "reg_rights": [], "tenants": []}  # 물건상세(등기·임차)에서 채우면 배당표 자동 계산
     item.update(analyze_rights(row))
     return item
@@ -278,7 +264,7 @@ def crawl(cfg):
     t0 = time.time()
     print(f"[crawl] 수집 시작 · 기간 {bgn}~{end} · 워커 {workers}", flush=True)
     print("[crawl] 세션 준비 중...", flush=True)
-    opener = make_opener()  # 세션 1개(데운)를 모든 스레드가 공유
+    opener = make_opener()          # 세션 1개(데운)를 모든 스레드가 공유
     print("[crawl] 1페이지 조회(총건수 확인) 중...", flush=True)
     first_rows, total = fetch_page(opener, 1, bgn, end, timeout, retries)
     if first_rows is None:
@@ -315,12 +301,11 @@ def crawl(cfg):
             take(rows)
         done = chunk[-1]
         pctv = done * 100 // total_pages
-        print(
-            f"[crawl] {done}/{total_pages}p ({pctv}%) · 응답 {ok}/{len(chunk)} · 누적 {len(props)}건 · {time.time() - t0:.0f}s",
-            flush=True)
+        print(f"[crawl] {done}/{total_pages}p ({pctv}%) · 응답 {ok}/{len(chunk)} · 누적 {len(props)}건 · {time.time()-t0:.0f}s",
+              flush=True)
         if len(props) >= cap:
             break
-    print(f"[crawl] 완료: 수집 {len(props)}건 · 총 {time.time() - t0:.0f}s", flush=True)
+    print(f"[crawl] 완료: 수집 {len(props)}건 · 총 {time.time()-t0:.0f}s", flush=True)
     return props
 
 
@@ -362,7 +347,7 @@ def fetch_past_page(opener, page, timeout=12, retries=3):
 
 def past_row_to_item(row, f, cutoff):
     won = _to_int(row.get("maeAmt"))
-    if won <= 0:  # 낙찰 건만
+    if won <= 0:                                  # 낙찰 건만
         return None
     appr = _to_int(row.get("gamevalAmt"))
     if appr < f["min_appr"] or appr > f["max_appr"]:
@@ -374,7 +359,7 @@ def past_row_to_item(row, f, cutoff):
     if not any(s in sido for s in f["sido"]):
         return None
     raw = str(row.get("maeGiil", ""))
-    if len(raw) == 8 and raw < cutoff:  # 최근 N일만
+    if len(raw) == 8 and raw < cutoff:            # 최근 N일만
         return None
     case = row.get("srnSaNo", "")
     if not case:
@@ -432,10 +417,10 @@ def crawl_past(cfg):
         before = len(out)
         for rows in res:
             take(rows)
-        print(f"[past] ~{chunk[-1]}/{total_pages}p · 누적 {len(out)}건 · {time.time() - t0:.0f}s", flush=True)
-        if out and len(out) == before:  # 최근 구간을 지나 더 안 늘면 종료
+        print(f"[past] ~{chunk[-1]}/{total_pages}p · 누적 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
+        if out and len(out) == before:            # 최근 구간을 지나 더 안 늘면 종료
             break
-    print(f"[past] 완료: 낙찰 {len(out)}건 · {time.time() - t0:.0f}s", flush=True)
+    print(f"[past] 완료: 낙찰 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
     return out
 
 
@@ -449,9 +434,9 @@ def parse_detail(res):
     photos = []
     for pic in res.get("csPicLst", []) or []:
         data = pic.get("picFile") or ""
-        if isinstance(data, str) and data.startswith("/9j/"):  # JPEG base64 인라인
+        if isinstance(data, str) and data.startswith("/9j/"):        # JPEG base64 인라인
             photos.append("data:image/jpeg;base64," + data)
-        elif isinstance(data, str) and data.startswith("iVBOR"):  # PNG base64
+        elif isinstance(data, str) and data.startswith("iVBOR"):     # PNG base64
             photos.append("data:image/png;base64," + data)
     schedule = []
     for x in res.get("gdsDspslDxdyLst", []) or []:
@@ -482,9 +467,8 @@ def fetch_detail(opener, court_cd, cs_no, seq, timeout=15, retries=2):
                "SC-Pgmid": "PGJ15BM01", "submissionid": "mf_wfm_mainFrame_sbm_selectGdsDtlSrchDtlInfo",
                "Referer": BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml"}
     payload = {"dma_srchGdsDtlSrch": {"csNo": cs_no, "cortOfcCd": court_cd, "dspslGdsSeq": str(seq),
-                                      "pgmId": "PGJ151F01",
-                                      "srchInfo": {"bidDvsCd": "000331", "mvprpRletDvsCd": "00031R",
-                                                   "cortAuctnSrchCondCd": "0004601", "cortOfcCd": court_cd}}}
+                                      "pgmId": "PGJ151F01", "srchInfo": {"bidDvsCd": "000331", "mvprpRletDvsCd": "00031R",
+                                                                         "cortAuctnSrchCondCd": "0004601", "cortOfcCd": court_cd}}}
     for attempt in range(retries):
         try:
             req = urllib.request.Request(DETAIL_EP, data=json.dumps(payload).encode("utf-8"),
@@ -547,8 +531,7 @@ def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pa
         for n in range(max_pages):
             try:
                 req = urllib.request.Request(f"{SDOC}/{sdoc}/texts/{n}",
-                                             headers={"User-Agent": UA,
-                                                      "Referer": "https://pvo.scourt.go.kr/streamdocs/view"})
+                                             headers={"User-Agent": UA, "Referer": "https://pvo.scourt.go.kr/streamdocs/view"})
                 pages[n] = json.loads(opener.open(req, timeout=15).read().decode("utf-8"))
             except Exception:  # noqa: BLE001
                 break
@@ -612,7 +595,7 @@ def parse_specification(pages):
                             "lease_start": f"{g[0]}-{g[1]}-{g[2]}",
                             "movein": f"{g[4]}-{g[5]}-{g[6]}",
                             "fixed": f"{g[7]}-{g[8]}-{g[9]}",
-                            "demand": True})  # 배당요구 여부는 열 위치 기반으로 추후 정밀화
+                            "demand": True})   # 배당요구 여부는 열 위치 기반으로 추후 정밀화
     return {"base_date": base_date, "demand_end": demand_end, "tenants": tenants}
 
 
@@ -654,6 +637,12 @@ def main():
         with_lawd = sum(1 for p in props if p.get("lawd_cd"))
         print(f"[crawl] 수집 {len(props)}건 → properties.json "
               f"(법정동코드 확보 {with_lawd}/{len(props)}, 시세조회 가능)")
+    elif os.path.exists(OUT):
+        print("[crawl] 수집 0건 — 기존 properties.json 유지", file=sys.stderr)
+    else:
+        props = sample_properties()
+        save(props)
+        print(f"[crawl] 수집 0건 — 최초 실행이라 샘플 {len(props)}건으로 시작", file=sys.stderr)
 
     # 물건 상세(등기·임차·사진·회차별 기일) — 무거우므로 상위 N건만(opt-in)
     n_detail = 0
@@ -668,7 +657,7 @@ def main():
         spec_cache = _load_cfg("spec-cache.json", {})
         done = 0
         for p in props[:n_detail]:
-            court, case, seq = p.get("bo_cd"), p.get("case_no"), p.get("dspsl_gds_seq", 1)
+            court, case = p.get("bo_cd"), p.get("case_no")
             if not (court and case):
                 continue
             d = fetch_detail(opener, court, case, p.get("maemul_ser", 1))
@@ -684,15 +673,30 @@ def main():
                 if d.get("detail_note"):
                     p["note"] = ((p.get("note") or "") + " " + d["detail_note"]).strip()[:400]
                 done += 1
+                ecdoc = d.get("ecdoc_id")
+                if ecdoc:
+                    spec = spec_cache.get(ecdoc)
+                    if spec is None:
+                        spec = fetch_specification(opener, court, d.get("cs_no14") or case,
+                                                   d.get("dspsl_gds_seq", 1), ecdoc, d.get("orv_param"))
+                        spec_cache[ecdoc] = spec or {}
+                    if spec:
+                        if spec.get("tenants"):
+                            p["tenants"] = spec["tenants"]
+                        bd = spec.get("base_date") or d.get("base_date")
+                        if bd and d.get("claim_amt"):
+                            p["reg_rights"] = [{"type": "근저당", "amount": d["claim_amt"], "date": bd}]
+                        if spec.get("demand_end"):
+                            p["demand_end"] = spec["demand_end"]
             time.sleep(0.3)
+        try:
+            with open(SPEC_CACHE, "w", encoding="utf-8") as fc:
+                json.dump(spec_cache, fc, ensure_ascii=False)
+        except Exception:  # noqa: BLE001
+            pass
         save(props)
-        print(f"[detail] 상세 보강 {done}/{min(n_detail, len(props))}건 (사진·회차·권리텍스트)")
-    elif not props and os.path.exists(OUT):
-        print("[crawl] 수집 0건 — 기존 properties.json 유지", file=sys.stderr)
-    else:
-        props = sample_properties()
-        save(props)
-        print(f"[crawl] 수집 0건 — 최초 실행이라 샘플 {len(props)}건으로 시작", file=sys.stderr)
+        tn = sum(1 for p in props[:n_detail] if p.get("tenants"))
+        print(f"[detail] 상세 보강 {done}/{min(n_detail, len(props))}건 · 임차/배당 입력 {tn}건")
 
     # 과거 매각결과(실적) 수집
     if "--active-only" not in sys.argv:

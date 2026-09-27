@@ -34,6 +34,50 @@ DAILY_COUNT = 10
 _BLOG = _cfg_json("blog-config.json", {})
 BLOG_NAME = _BLOG.get("blog_name", "매일경매레터")
 NICK = _BLOG.get("nick", "경매노트")
+SITE_URL = _BLOG.get("site_url", "https://example.com").rstrip("/")
+SITE_NAME = _BLOG.get("site_name", "경매 분석")
+ADSENSE = (_BLOG.get("adsense_client") or "").strip()   # ca-pub-XXXXXXXX (비우면 광고 미표시)
+
+
+def _verdict(sc):
+    return ("입찰 적합", "ok") if sc >= 65 else (("조건부", "cond") if sc >= 50 else ("보류", "hold"))
+
+
+def analysis_card(r):
+    """대시보드 스타일 분석 카드(현재 매물 시각화 · 캡쳐 대용) + 사이트 유입."""
+    sc = int(r.get("score") or 0)
+    vt, vc = _verdict(sc)
+    nm = (r.get("apt_name") or r.get("type") or "")
+    lq = (r.get("liquidity") or {}).get("grade", "—")
+    sp = (r.get("special") or [])[:3]
+    badge = "".join('<span class="c-sp">%s</span>' % x for x in sp)
+    return ('<a class="acard" href="%s/" target="_blank" rel="noopener">'
+            '<div class="c-top"><span class="c-score s-%s">%d</span>'
+            '<span class="c-nm">%s</span><span class="c-v v-%s">%s</span></div>'
+            '<div class="c-grid">'
+            '<div><span>적정 입찰가</span><b class="lock">🔒 프리미엄</b></div>'
+            '<div><span>예상 순이익</span><b class="lock">🔒 프리미엄</b></div>'
+            '<div><span>낙찰 성공률</span><b>%s</b></div>'
+            '<div><span>환금성</span><b>%s등급</b></div></div>'
+            '%s<div class="c-cta">%s에서 전체 분석 무료로 보기 ›</div></a>') % (
+        SITE_URL, vc, sc, nm, vc, vt, pct(r.get("success_prob")), lq,
+        ('<div class="c-badges">%s</div>' % badge if badge else ""), SITE_NAME)
+
+
+def site_promo():
+    return ('<div class="promo"><b>📊 이 물건, %s에서 이렇게 분석했어요</b><br>'
+            '전국 경매 물건의 <b>적정 입찰가·예상 배당표·수익률·권리 리스크</b>를 '
+            '<a href="%s/" target="_blank" rel="noopener">%s</a>에서 무료로 확인하세요. '
+            '반값·마감임박·고수익 테마로 골라볼 수도 있어요.</div>') % (SITE_NAME, SITE_URL, SITE_NAME)
+
+
+def adsense_slot():
+    if not ADSENSE:
+        return ""
+    return ('<ins class="adsbygoogle" style="display:block;margin:1.4em 0" data-ad-client="%s" '
+            'data-ad-format="auto" data-full-width-responsive="true"></ins>'
+            '<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=%s" crossorigin="anonymous"></script>'
+            '<script>(adsbygoogle=window.adsbygoogle||[]).push({});</script>') % (ADSENSE, ADSENSE)
 # ─────────────────────────────────────────────────────────────
 
 
@@ -202,6 +246,24 @@ STYLE = """
 .auc .ask b{color:#127a4a}
 .auc .tags{margin-top:1.8em;color:#3d7bd6;font-size:.92em;line-height:2;word-break:keep-all}
 .auc .disc{font-size:.85em;color:#9aa0a8;border-top:1px solid #eee;margin-top:1.8em;padding-top:1em}
+.auc .acard{display:block;text-decoration:none;color:#333;border:1px solid #e2e2e2;border-radius:16px;padding:16px;margin:1.2em 0;box-shadow:0 2px 10px rgba(0,0,0,.05);background:#fff}
+.auc .c-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.auc .c-score{flex:0 0 auto;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;border:2px solid}
+.auc .c-score.s-ok{color:#00a152;border-color:#00c85a;background:#e9fbf0}
+.auc .c-score.s-cond{color:#a76a00;border-color:#e6941a;background:#fff6e6}
+.auc .c-score.s-hold{color:#777;border-color:#ccc;background:#f5f5f5}
+.auc .c-nm{flex:1;font-weight:800;font-size:16px}
+.auc .c-v{flex:0 0 auto;font-size:12px;font-weight:700;border-radius:999px;padding:4px 10px}
+.auc .c-v.v-ok{background:#e9fbf0;color:#00a152}.auc .c-v.v-cond{background:#fff6e6;color:#a76a00}.auc .c-v.v-hold{background:#f0f0f0;color:#777}
+.auc .c-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.auc .c-grid>div{background:#fafafa;border-radius:10px;padding:9px 11px}
+.auc .c-grid span{display:block;font-size:11.5px;color:#8a9098}
+.auc .c-grid b{font-size:15px;font-weight:800;color:#111}
+.auc .c-grid b.lock{color:#00a152;font-size:13px}
+.auc .c-badges{margin-top:10px}.auc .c-sp{display:inline-block;background:#fff3e0;color:#c46a00;border-radius:8px;padding:3px 9px;font-size:11.5px;font-weight:700;margin:0 4px 4px 0}
+.auc .c-cta{margin-top:12px;text-align:center;color:#00a152;font-weight:800;font-size:13.5px}
+.auc .promo{background:linear-gradient(135deg,#e9fbf0,#f7f8fa);border:1px solid #cfeede;border-radius:14px;padding:16px 18px;margin:1.4em 0;line-height:1.8}
+.auc .promo a{color:#00a152;font-weight:800;text-decoration:none}
 .auc .sign{color:#888;font-size:.92em;margin-top:.3em}
 .auc .photo{margin:1.1em 0}.auc .photo img{width:100%;border-radius:12px;display:block}
 .auc figure{margin:1.1em 0}
@@ -297,6 +359,41 @@ def complex_table(r):
     return '<h2>단지 정보</h2><table>' + "".join(rows) + '</table>'
 
 
+def info_table(r):
+    """물건 정보 상세: 소재지·건물내역·층·준공·실거래·평단가·최근실거래범위·매각기일·비고."""
+    rows = []
+    def add(k, v):
+        if v not in (None, "", "—"):
+            rows.append(f'<tr><th style="width:32%">{k}</th><td>{v}</td></tr>')
+    add("소재지", r.get("address"))
+    add("건물내역", r.get("building_detail"))
+    if r.get("floor"):
+        add("층", f'{r["floor"]}층' + (f' / 총 {r["total_floors"]}층' if r.get("total_floors") else ""))
+    built = y(r.get("approve_date")) if r.get("approve_date") else (str(r["built_year"]) + "년" if r.get("built_year") else None)
+    add("준공", built)
+    if r.get("molit_count"):
+        add("실거래(최근)", f'{r["molit_count"]}건')
+    if r.get("price_per_pyeong"):
+        add("평단가", f'약 {round(r["price_per_pyeong"]/1e4):,}만원/평')
+    if r.get("molit_low"):
+        add("최근 실거래가", f'{won(r["molit_low"])}~{won(r["molit_high"])}')
+    add("매각기일", r.get("sale_date"))
+    add("비고", r.get("note"))
+    return '<table>' + "".join(rows) + '</table>' if rows else ""
+
+
+def cost_table(r):
+    """예상 부대비용 상세(권장가 기준). 적정입찰가·순이익은 블라인드 유지."""
+    ci = r.get("cost_items") or {}
+    rows = "".join(f'<tr><th style="width:38%">− {k}</th><td class="c">{won(v)}</td></tr>'
+                   for k, v in ci.items() if v)
+    if not rows:
+        return ""
+    return ('<h3 style="font-size:1.05em;margin:1.2em 0 .3em">예상 부대비용 (권장가 기준)</h3><table>'
+            + rows + '</table><p style="font-size:.9em;color:#8a9098">권장 입찰가에 맞춰 추정한 비용입니다. '
+            '적정 입찰가·예상 순이익은 프리미엄으로 가려두었어요.</p>')
+
+
 def area_table(r):
     area = r.get("exclusive_area")
     py = pyeong(area)
@@ -383,11 +480,13 @@ def generate_post(r, rank):
 <p class="kw">{kw}</p>
 {cover}
 <div class="summary">{summ}</div>
+{analysis_card(r)}
 {court_photo}
 <p>안녕하세요, 매일 수도권 경매 물건을 데이터로 분석해 정리하는 <b>{NICK}</b>입니다.</p>
 
 <h2>물건 정보</h2>
 <p>{story}</p>
+{info_table(r)}
 {gal}
 {complex_table(r)}
 {area_table(r)}
@@ -410,7 +509,10 @@ def generate_post(r, rank):
 <tr><th>예상 순이익 · 수익률</th><td class="c">{LOCK}</td></tr>
 <tr><th>낙찰 성공률(참고)</th><td class="c">{pct(r.get('success_prob'))} · 환금성 {(r.get('liquidity') or {}).get('grade','—')}등급</td></tr>
 </table>
+{cost_table(r)}
 <div class="ask"><b>💬 적정 입찰가·예상 수익 문의</b><br>{cta}</div>
+{site_promo()}
+{adsense_slot()}
 
 <h2>정리</h2>
 <p>{'입지·환금성이 받쳐주는 물건입니다. ' if (r.get('liquidity') or {}).get('score',0)>=55 else '환금성은 다소 아쉬우니 매도 기간을 넉넉히 잡는 게 좋습니다. '}

@@ -129,5 +129,6 @@
       "monthly_per_m2": 30000,
       "deposit_ratio": 0.1
     }
-  }
+  },
+  "fetch_rent": true
 }

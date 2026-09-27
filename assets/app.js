@@ -45,7 +45,7 @@ function card(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rights_
     <div class="detail">
       ${photosHTML}${infoHTML}<div class="dtitle">입찰 전략가</div>
       <div class="strat">
-        <div class="st"><div class="l">보수</div><div class="v">${won(st.safe_max)}</div></div>
+        <div class="st"><div class="l">보수·한도</div><div class="v">${won(st.safe_max)}</div></div>
         <div class="st rec"><div class="l">권장</div><div class="v">${won(r.recommended_bid)}</div></div>
         <div class="st"><div class="l">공격</div><div class="v">${won(st.win_target)}</div></div>
       </div>
@@ -62,30 +62,19 @@ function card(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rights_
       ${r.distribution?`<div class="dtitle">예상 배당표</div><table class="kv"><tr><td>배당재원 (낙찰가 − 경매비용)</td><td>${won(r.distribution.배당재원)}원</td></tr>${r.distribution.rows.map(x=>`<tr><td>${x.권리} <span style="color:var(--dim)">청구 ${won(x.청구액)}</span></td><td>${won(x.배당액)}원 · <span style="color:${x.상태.includes("인수")?"var(--neg)":"var(--mut)"}">${x.상태}</span></td></tr>`).join("")}<tr><td style="color:var(--tx);font-weight:700">인수 예상액(낙찰자 부담)</td><td class="${r.distribution.인수합계>0?"neg":"pos"}">${won(r.distribution.인수합계)}원</td></tr></table><p style="font-size:11.5px;color:var(--dim);margin:.3em 0 0">등기·임차 데이터 기반 추정. 실제 배당은 법원 판단.</p>`:""}
       ${chk.length?`<div class="dtitle">꼭 확인 · 인수/리스크</div><ul class="chk">${chk.map(c=>`<li class="lv-${c.level}"><b>${c.item}</b><span>${c.note}</span></li>`).join("")}</ul>`:""}<div class="dtitle">종합 점수 구성</div>
       <div class="bd"><span>환금성 ${bd.환금성??"—"}</span><span>안전마진 ${bd.안전마진??"—"}</span><span>위험조정 ${bd.위험조정수익??"—"}</span><span>권리 ${bd.권리안전??"—"}</span><span>낙찰가능 ${bd.낙찰가능성??"—"}</span><span>Kelly ${Math.round((r.kelly_fraction||0)*100)}%</span></div>
-      <div class="dtitle">입찰가별 성공률·순이익</div>
-      <canvas class="cv" height="120"></canvas>
     </div>
   </div>`}
 
 function toggle(btn){const c=btn.closest(".card");const open=c.classList.toggle("open");
   btn.textContent=open?"접기":"자세히 보기";
-  if(open){const r=RENDERED[+c.dataset.i];drawCurve(c.querySelector(".cv"),r)}}
+}
 
-function drawCurve(cv,r){const cur=r.curve;if(!cur)return;const dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.height;
-  cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);g.clearRect(0,0,W,H);
-  let pmin=1e18,pmax=-1e18;cur.forEach(c=>{pmin=Math.min(pmin,c.profit);pmax=Math.max(pmax,c.profit)});
-  const lo=cur[0].bid,hi=cur.at(-1).bid,p=6,X=b=>p+(b-lo)/(hi-lo)*(W-2*p),Yw=w=>H-p-w*(H-2*p),Yp=v=>H-p-((v-pmin)/((pmax-pmin)||1))*(H-2*p);
-  if(pmin<0&&pmax>0){g.strokeStyle="#e5e5ea";g.setLineDash([3,4]);g.beginPath();g.moveTo(p,Yp(0));g.lineTo(W-p,Yp(0));g.stroke();g.setLineDash([])}
-  g.strokeStyle="#f59e0b";g.lineWidth=2.2;g.beginPath();cur.forEach((c,i)=>i?g.lineTo(X(c.bid),Yp(c.profit)):g.moveTo(X(c.bid),Yp(c.profit)));g.stroke();
-  g.strokeStyle="#3897f0";g.lineWidth=2.2;g.beginPath();cur.forEach((c,i)=>i?g.lineTo(X(c.bid),Yw(c.win)):g.moveTo(X(c.bid),Yw(c.win)));g.stroke();
-  g.strokeStyle="rgba(28,28,30,.35)";g.setLineDash([2,3]);g.beginPath();g.moveTo(X(r.recommended_bid),p);g.lineTo(X(r.recommended_bid),H-p);g.stroke();g.setLineDash([])}
-
+function toggleFav(id){if(FAV.has(id))FAV.delete(id);else FAV.add(id);try{localStorage.setItem("auc_fav",JSON.stringify([...FAV]))}catch(e){}}
+let REGION="",VERDICT="",Q="",SPECIAL="",PAGE=1,RENDERED=[];const PAGESIZE=40;
+let FAV=new Set(),FAVONLY=false;try{FAV=new Set(JSON.parse(localStorage.getItem("auc_fav")||"[]"))}catch(e){}
 const SORT={score:(a,b)=>b.score-a.score,roi:(a,b)=>b.roi-a.roi,profit:(a,b)=>b.net_profit-a.net_profit,win:(a,b)=>b.success_prob-a.success_prob,sched:(a,b)=>((a.sale_date||"9999")<(b.sale_date||"9999")?-1:1)};
 let THEME="전체";
 const THEMES={"전체":r=>true,"반값경매":r=>r.appraisal&&r.min_bid/r.appraisal<=0.5,"유찰3회↑":r=>(r.fail_rounds||0)>=3,"고수익률":r=>(r.roi||0)>=0.15,"소액(3억↓)":r=>r.appraisal&&r.appraisal<=3e8,"특수물건":r=>(r.special||[]).length>0,"수도권":r=>/^(서울|경기|인천)/.test(r.region||"")};
-let REGION="",VERDICT="",Q="",SPECIAL="",PAGE=1,RENDERED=[];const PAGESIZE=40;
-let FAV=new Set(),FAVONLY=false;try{FAV=new Set(JSON.parse(localStorage.getItem("auc_fav")||"[]"))}catch(e){}
-function toggleFav(id){if(FAV.has(id))FAV.delete(id);else FAV.add(id);try{localStorage.setItem("auc_fav",JSON.stringify([...FAV]))}catch(e){}}
 function passF(r){
   if(FILTER!=="전체"&&r.type!==FILTER)return false;
   if(REGION&&!(r.region||"").startsWith(REGION))return false;
@@ -295,7 +284,6 @@ function boot(){
   el("ptype").onchange=()=>{PTYPE=el("ptype").value;paintPast(true);};
   el("psort").onchange=()=>paintPast(true);
   el("pmore").onclick=()=>{PPAGE++;paintPast(false);};
-  addEventListener("resize",()=>{document.querySelectorAll(".card.open").forEach(c=>drawCurve(c.querySelector(".cv"),RENDERED[+c.dataset.i]))});
 }
 function render(){el("upd").textContent=(PREVIEW?"미리보기 · 샘플":(AN.generated_at||"").slice(0,16).replace("T"," "));
   renderThemes();renderChips();renderFeed();renderPast();renderMethod();renderGuide()}

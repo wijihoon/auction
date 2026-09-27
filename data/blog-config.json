@@ -10,5 +10,8 @@
   "오늘 살펴볼 물건은 <b>{reg} {nm}</b>입니다.",
   "오늘은 {reg}에 나온 <b>{nm}</b>를 데이터로 뜯어보겠습니다.",
   "이번에 눈에 들어온 물건은 <b>{reg} {nm}</b>입니다."
- ]
+ ],
+ "site_url": "https://your-auction-site.pages.dev",
+ "site_name": "경매 분석",
+ "adsense_client": ""
 }

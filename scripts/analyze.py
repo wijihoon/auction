@@ -243,6 +243,98 @@ def build_trade_cache(props, key, months=6, workers=8):
     return cache
 
 
+# ----------------------- 임대 실거래(전월세) → 수익환산 입력 -----------------------
+# 상가(상업업무용)는 국토부 임대 공개 API가 없어 기본값 사용.
+RENT_ENDPOINTS = {
+    "오피스텔": "1613000/RTMSDataSvcOffiRent/getRTMSDataSvcOffiRent",
+    "아파트": "1613000/RTMSDataSvcAptRent/getRTMSDataSvcAptRent",
+    "빌라": "1613000/RTMSDataSvcRHRent/getRTMSDataSvcRHRent",
+}
+
+
+def _fetch_rent_month(path, lawd_cd, key, ym):
+    """(법정동,월) 전월세 실거래 → 월세 계약만 [[deposit, monthly, area], ...] (monthly>0)."""
+    q = urllib.parse.urlencode({"serviceKey": key, "LAWD_CD": lawd_cd, "DEAL_YMD": ym, "numOfRows": "1000"})
+    out = []
+    with urllib.request.urlopen(f"{BASE}{path}?{q}", timeout=20) as r:
+        root = ET.fromstring(r.read().decode("utf-8", "ignore"))
+    for it in root.iter("item"):
+        def g(*tags):
+            for t in tags:
+                e = it.find(t)
+                if e is not None and e.text:
+                    return e.text.strip()
+            return ""
+        try:
+            monthly = int((g("monthlyRent", "월세금액") or "0").replace(",", "")) * 10000
+        except ValueError:
+            monthly = 0
+        if monthly <= 0:                              # 전세 제외(수익환산은 월세 기준)
+            continue
+        try:
+            deposit = int((g("deposit", "보증금액") or "0").replace(",", "")) * 10000
+        except ValueError:
+            deposit = 0
+        try:
+            area = float(g("excluUseAr", "전용면적") or 0) or None
+        except ValueError:
+            area = None
+        out.append([deposit, monthly, area])
+    return out
+
+
+def build_rent_cache(props, key, months=6, workers=8):
+    """(유형, 법정동) 전월세 실거래 수집. 월 단위 캐시(지난달 재사용)."""
+    uniq = sorted({(p.get("type"), p.get("lawd_cd")) for p in props
+                   if p.get("lawd_cd") and RENT_ENDPOINTS.get(p.get("type"))})
+    if not key or not uniq:
+        return {}
+    mcache = _load_json("rent-cache.json")
+    cur_ym = recent_months(1)[0]
+
+    def work(k):
+        typ, lawd = k
+        path = RENT_ENDPOINTS[typ]
+        rows, new = [], {}
+        for ym in recent_months(months):
+            ck = f"{typ}|{lawd}|{ym}"
+            if ym < cur_ym and ck in mcache:
+                month = mcache[ck]
+            else:
+                try:
+                    month = _fetch_rent_month(path, lawd, key, ym)
+                except Exception:  # noqa: BLE001
+                    month = mcache.get(ck, [])
+                new[ck] = month
+            rows.extend(tuple(t) for t in month)
+        return k, rows, new
+
+    cache = {}
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
+        for k, rows, new in ex.map(work, uniq):
+            cache[k] = rows
+            mcache.update(new)
+    keep = set(recent_months(months + 1))
+    mcache = {ck: v for ck, v in mcache.items() if ck.rsplit("|", 1)[-1] in keep}
+    _save_json("rent-cache.json", mcache)
+    print(f"[analyze] 임대실거래(전월세): {len(uniq)}개 (유형·시군구) 수집", file=sys.stderr, flush=True)
+    return cache
+
+
+def rent_lookup(prop, rent_cache):
+    """물건의 유형·시군구·유사면적 월세 실거래 중앙값 → (월세, 보증금). 없으면 None."""
+    rows = (rent_cache or {}).get((prop.get("type"), prop.get("lawd_cd"))) or []
+    if not rows:
+        return None
+    area = prop.get("exclusive_area") or 0
+    sel = [(d, m) for d, m, ar in rows if not (area and ar and abs(ar - area) > 15)]
+    if not sel:
+        sel = [(d, m) for d, m, ar in rows]
+    if not sel:
+        return None
+    return int(statistics.median([m for _, m in sel])), int(statistics.median([d for d, _ in sel]))
+
+
 # ----------------------- 공동주택 단지정보(세대수 등) -----------------------
 APT_LIST = "1613000/AptListService3/getSigunguAptList3"
 APT_INFO = "1613000/AptBasisInfoServiceV3/getAphusBassInfoV3"
@@ -368,27 +460,31 @@ def floor_bucket(prop):
     return "mid"
 
 
-def income_value(prop, a):
-    """수익환원 가치: 연월세/목표수익률 + 보증금. 오피스텔·상가용.
-    물건에 임대 데이터(monthly_rent·lease_deposit)가 있으면 사용, 없으면 유형·면적 기반 기본값."""
+def income_value(prop, a, rent=None):
+    """수익환원 가치: 연월세/목표수익률 + 보증금.
+    임대 실거래(rent_lookup) > 물건 입력(monthly_rent) > 유형·면적 기본값 순으로 월세·보증금 결정."""
     v = (a.get("valuation") or {}).get(prop.get("type"))
     if not v:
         return None
     area = prop.get("exclusive_area") or 0
-    monthly = prop.get("monthly_rent") or (area * v.get("monthly_per_m2", 0))
-    deposit = prop.get("lease_deposit")
-    if deposit is None:
-        deposit = int((prop.get("appraisal") or 0) * v.get("deposit_ratio", 0))
+    rl = rent_lookup(prop, rent) if rent else None
+    if rl:
+        monthly, deposit = rl                          # 실거래 우선
+    else:
+        monthly = prop.get("monthly_rent") or (area * v.get("monthly_per_m2", 0))
+        deposit = prop.get("lease_deposit")
+        if deposit is None:
+            deposit = int((prop.get("appraisal") or 0) * v.get("deposit_ratio", 0))
     y = v.get("target_yield") or 0
     if monthly <= 0 or y <= 0:
         return None
     return int(monthly * 12 / y + deposit)
 
 
-def valued_price(prop, cache, a):
+def valued_price(prop, cache, a, rent=None):
     """유형별 가치: 아파트/주거=실거래 시세, 오피스텔=min(시세,수익환산), 상가=수익환산(Cap Rate)."""
     sale, src, n = market_price(prop, cache, a)
-    iv = income_value(prop, a)
+    iv = income_value(prop, a, rent)
     if iv:
         t = prop.get("type")
         if t == "상가":                       # 감정가·시세 왜곡 큼 → 수익환원으로 재산출
@@ -838,9 +934,9 @@ def kelly_fraction(res, a):
 
 
 # ----------------------- 물건 분석 -----------------------
-def analyze_property(prop, baselines, a, history, cache, apt_info=None):
+def analyze_property(prop, baselines, a, history, cache, apt_info=None, rent=None):
     appr = prop["appraisal"]
-    sale, src, trade_count = valued_price(prop, cache, a)
+    sale, src, trade_count = valued_price(prop, cache, a, rent)
     mean_adj, std, bidders, mean_raw, samples = ratio_and_bidders(prop, sale, baselines, history, a)
     w_emp = min(0.6, len(samples) / 20.0) if samples else 0.0   # 실측 표본 많을수록 경험분포 가중↑
     liq = liquidity_score(prop, baselines, a, trade_count)
@@ -1054,7 +1150,8 @@ def main():
 
     print(f"[analyze] 물건 {len(props)}건 · 과거 실적 {len(history)}건({hsrc}) · 분석 중...", flush=True)
     apt_cache = build_apt_cache(props, key) if a.get("fetch_apt_details", True) else {}
-    results = [analyze_property(p, baselines, a, history, cache, apt_cache.get(p["id"])) for p in props]
+    rent_cache = build_rent_cache(props, key, months, workers) if a.get("fetch_rent", True) else {}
+    results = [analyze_property(p, baselines, a, history, cache, apt_cache.get(p["id"]), rent_cache) for p in props]
     results.sort(key=lambda r: r["score"], reverse=True)
 
     # 점수 상위 물건에 courtauction 실제 사진(HAR 상세) 자동 수집 — 영구 캐시

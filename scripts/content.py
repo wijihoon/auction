@@ -245,6 +245,7 @@ STYLE = """
 .auc .ask{background:#f3faf5;border:1px solid #cdead9;border-radius:14px;padding:16px 18px;line-height:1.75;margin:1.2em 0}
 .auc .ask b{color:#127a4a}
 .auc .tags{margin-top:1.8em;color:#3d7bd6;font-size:.92em;line-height:2;word-break:keep-all}
+.auc .post-title{font-size:1.5em;font-weight:800;line-height:1.35;margin:.1em 0 .5em;color:#111;letter-spacing:-.01em}
 .auc .disc{font-size:.85em;color:#9aa0a8;border-top:1px solid #eee;margin-top:1.8em;padding-top:1em}
 .auc .acard{display:block;text-decoration:none;color:#333;border:1px solid #e2e2e2;border-radius:16px;padding:16px;margin:1.2em 0;box-shadow:0 2px 10px rgba(0,0,0,.05);background:#fff}
 .auc .c-top{display:flex;align-items:center;gap:10px;margin-bottom:12px}
@@ -433,13 +434,65 @@ def rights_para(r):
             f"{note} 그래도 명세서 확인은 습관처럼 하시고요.")
 
 
+def _eok(n):
+    n = n or 0
+    if n >= 1e8:
+        return (f"{n/1e8:.1f}").rstrip("0").rstrip(".") + "억"
+    return f"{round(n/1e4):,}만"
+
+
+def catchy_title(r):
+    """이목을 끄는 자극적 제목. 특수물건·순손실·할인율에 따라 톤 분기."""
+    s = _seed(r["id"] + "title")
+    reg = (r.get("region") or "").split()[-1]
+    nm = pname(r)
+    py = pyeong(r.get("exclusive_area"))
+    pt = f"{round(py)}평" if py else ""
+    appr, minb = _eok(r.get("appraisal")), _eok(r.get("min_bid"))
+    disc = round((r.get("discount_vs_market") or 0) * 100)
+    gap = round((1 - (r.get("min_bid") or 0) / (r.get("appraisal") or 1)) * 100)
+    fail = r.get("fail_rounds") or 0
+    roi = round((r.get("roi") or 0) * 100)
+    sp = r.get("special") or []
+    if (r.get("net_profit") or 0) < 0:
+        pool = [f"🚨 {reg} {nm} {pt}, 싸 보여도 지금 들어가면 물린다",
+                f"함정 주의 ⚠️ {reg} {nm} {pt}, 감정가 대비 {gap}%↓의 진실",
+                f"이 경매, 절대 사지 마세요 — {reg} {nm} {pt} 손익 분석"]
+    elif sp:
+        spn = sp[0]
+        pool = [f"⚠️ {nm} {pt}, {spn} 걸렸다… 그래도 {disc}% 싸다면?",
+                f"기회냐 함정이냐 — {reg} {nm}, {spn} 물건 전격 해부",
+                f"🔥 {spn} 붙은 {reg} {nm} {pt}, 최저 {minb}까지 떨어졌다",
+                f"남들이 겁내는 {spn} 물건, {reg} {nm}에 답이 있다"]
+    else:
+        pool = [f"🔥 감정가 {appr}이 최저 {minb}?! {reg} {nm} {pt} 지금 줍줍각",
+                f"시세보다 {disc}% 싸다 — {reg} {nm} {pt}, {fail}번 유찰된 이유",
+                f"[경매] {nm} {pt} 최저 {minb}, 이 가격 실화냐",
+                f"반값각 떴다 🚨 {reg} {nm}, 감정가 대비 {gap}% 뚝",
+                f"낙찰만 하면 {roi}% 먹는다? {reg} {nm} {pt} 경매 파헤치기",
+                f"아무도 안 보는 {reg} 급매 경매 — {nm} {pt} {minb}"]
+    return re.sub(r"\s+", " ", _pick(pool, s)).strip()
+
+
+def catchy_past_title(c):
+    s = _seed(c["id"] + "past")
+    reg = (c.get("region") or "").split()[-1]
+    nm = c.get("apt_name") or c.get("type") or ""
+    roi = round((c.get("roi") or 0) * 100)
+    ratio = c.get("sale_ratio")
+    pool = [f"💰 {reg} {nm}, 낙찰 후 재매도 수익률 {roi}%의 실체",
+            f"[복기] {reg} {nm} 경매, 얼마 남겼나… ROI {roi}%",
+            f"낙찰가율 {ratio}%에 잡은 {reg} {nm}, 결과는?"]
+    return re.sub(r"\s+", " ", _pick(pool, s)).strip()
+
+
 def generate_post(r, rank):
     nm = pname(r)
     s = _seed(r["id"])
     reg, typ = r["region"], r["type"]
     area = r.get("exclusive_area")
     py = pyeong(area)
-    title = f"{reg} {typ} 경매 {nm}" + (f" {round(py)}평" if py else "")
+    title = catchy_title(r)
     cta = _pick(CTA_LINES, s, 3)
     intro = _pick(TITLE_INTRO, s).format(reg=reg, nm=nm)
     ph = fetch_photos(r)
@@ -477,6 +530,7 @@ def generate_post(r, rank):
 
     body = STYLE + f"""
 <div class="auc">
+<h1 class="post-title">{title}</h1>
 <p class="kw">{kw}</p>
 {cover}
 <div class="summary">{summ}</div>
@@ -529,9 +583,10 @@ def generate_past_post(c, rank):
     nm = c["region"] + " " + c["type"]
     s = _seed(c["id"])
     cta = _pick(CTA_LINES, s, 3)
-    title = f"[경매 복기] {c['region']} {c['type']} 낙찰 → 재매도 수익률 {c['roi']*100:.0f}%"
+    title = catchy_past_title(c)
     body = STYLE + f"""
 <div class="auc">
+<h1 class="post-title">{title}</h1>
 <p class="kw">#{c['region'].split()[0]}경매 #경매복기 #부동산경매</p>
 <p>안녕하세요, <b>{NICK}</b>입니다. 오늘은 이미 끝난 경매를 복기해봅니다.</p>
 <div class="summary"><b>{c['region']} {c['type']}</b><br>감정가 {won(c.get('appraisal'))} · 낙찰가율 {c.get('sale_ratio','—')}%<br>재매도 수익률 <b>{c['roi']*100:.1f}%</b></div>
@@ -583,8 +638,7 @@ def main():
     for rank, (kind, item) in enumerate(picks, 1):
         title, html = (generate_post(item, rank) if kind == "current" else generate_past_post(item, rank))
         pid = item["id"] if kind == "current" else "past_" + item["id"]
-        base = pname(item) if kind == "current" else item["id"]
-        fname = f"{rank:02d}-{slugify(base)}.html"
+        fname = f"{rank:02d}-{slugify(title)}.html"
         doc = (f'<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
                f'<meta name="viewport" content="width=device-width, initial-scale=1">\n'
                f'<title>{title}</title>\n</head>\n<body>\n{html}\n</body>\n</html>\n')

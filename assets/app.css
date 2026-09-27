@@ -120,7 +120,9 @@
   .chk li.lv-high b{color:#c0271b}
   .chk li.lv-warn{background:#fff6e6;border-left-color:#e6941a}
   .chk li.lv-warn b{color:#a76a00}
-.carousel{position:relative;margin:2px 0 14px;border-radius:12px;overflow:hidden;background:#000;border:1px solid var(--line)}
+.plain{background:linear-gradient(135deg,#eef7f1,#f6f8fa);border:1px solid #d5e8dd;border-radius:12px;padding:13px 15px;margin:2px 0 14px;line-height:1.75;font-size:13.5px;color:#374}
+  .plain .plain-h{font-weight:800;color:#00a152;margin-bottom:5px;font-size:13px}
+  .carousel{position:relative;margin:2px 0 14px;border-radius:12px;overflow:hidden;background:#000;border:1px solid var(--line)}
   .carousel .cimg{width:100%;max-height:300px;object-fit:contain;display:block;cursor:zoom-in;background:#000}
   .cnav{position:absolute;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;border:none;background:rgba(0,0,0,.45);color:#fff;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
   .cnav:hover{background:rgba(0,0,0,.7)}

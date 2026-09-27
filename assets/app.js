@@ -43,7 +43,7 @@ function card(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rights_
     <div class="rrow"><span class="rk ${rkc}">권리 ${rk.level}</span>${hi?`<span class="warnbadge">⚠ 인수주의 ${hi}</span>`:""}${flags}${sp}</div>
     <button class="more" onclick="toggle(this)">자세히 보기</button>
     <div class="detail">
-      ${photosHTML}${infoHTML}<div class="dtitle">입찰 전략가</div>
+      ${photosHTML}${plainSummary(r)}${infoHTML}<div class="dtitle">입찰 전략가</div>
       <div class="strat">
         <div class="st"><div class="l">보수·한도</div><div class="v">${won(st.safe_max)}</div></div>
         <div class="st rec"><div class="l">권장</div><div class="v">${won(r.recommended_bid)}</div></div>
@@ -70,6 +70,20 @@ function toggle(btn){const c=btn.closest(".card");const open=c.classList.toggle(
 }
 
 function toggleFav(id){if(FAV.has(id))FAV.delete(id);else FAV.add(id);try{localStorage.setItem("auc_fav",JSON.stringify([...FAV]))}catch(e){}}
+function plainSummary(r){
+  const nm=r.apt_name||r.type||"", reg=r.region||"";
+  const py=r.exclusive_area?Math.round(r.exclusive_area/3.3058):0;
+  const ratio=r.appraisal?Math.round(r.min_bid/r.appraisal*100):0;
+  const vt=verdict(r)[1], rk=(r.rights_risk||{}).level||"—", lq=(r.liquidity||{}).grade||"—";
+  const sp=r.special||[], fail=r.fail_rounds||0, win=Math.round((r.success_prob||0)*100);
+  let s=`<b>${reg} ${nm}</b> ${py?py+"평":""}, 감정가 ${won(r.appraisal)} 대비 최저가가 <b>${ratio}%</b> 수준입니다`;
+  s+=fail?` (${fail}회 유찰돼 가격이 내려왔습니다).`:` (아직 유찰 없는 신건입니다).`;
+  s+=` 권리관계 위험은 <b>${rk}</b>`;
+  if(sp.length)s+=`이고, <b>${sp.slice(0,3).join("·")}</b> 같은 특수물건이 걸려 있어 입찰 전 꼭 확인이 필요합니다`;
+  s+=`. 환금성은 ${lq}등급, 종합점수 <b>${r.score}점</b>으로 판정은 <b>${vt}</b>입니다.`;
+  s+=` 지금 가격대의 낙찰 성공률은 약 <b>${win}%</b>로 추정되며, 적정 입찰가·예상 순이익·인수 위험은 아래에서 확인하세요.`;
+  return `<div class="plain"><div class="plain-h">🤖 쉬운 해설</div>${s}</div>`;
+}
 function openLightbox(photos,idx){
   let i=idx||0;let lb=document.getElementById("lightbox");
   if(!lb){lb=document.createElement("div");lb.id="lightbox";lb.className="lightbox";

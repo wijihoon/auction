@@ -1,11 +1,11 @@
 name: 경매 자동 수집·분석
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch: { }
   schedule:
     - cron: "27 21 * * *"     # 매일 06:00 KST (전날 21:00 UTC) 수집·분석
   push:
-    branches: [main, master]
+    branches: [ main, master ]
 
 permissions:
   contents: write

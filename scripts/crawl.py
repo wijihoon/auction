@@ -17,9 +17,18 @@
 
 표준 라이브러리만 사용.
 """
-import os, sys, json, re, ssl, time, math, random, socket, threading
 import http.cookiejar
-import urllib.request, urllib.error
+import json
+import math
+import os
+import random
+import re
+import socket
+import ssl
+import sys
+import time
+import urllib.error
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
@@ -35,6 +44,8 @@ def _load_cfg(name, default):
         except Exception:
             return default
     return default
+
+
 OUT = os.path.join(DATA, "properties.json")
 KST = timezone(timedelta(hours=9))
 
@@ -42,6 +53,7 @@ BASE = "https://www.courtauction.go.kr"
 SEARCH_EP = BASE + "/pgj/pgjsearch/searchControllerMain.on"
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+
 
 # 용도 표시명 → 공용 스키마 type
 def type_from_usage(u):
@@ -76,7 +88,7 @@ def region_from_address(addr):
     p = addr.split()
     sido = p[0]
     short = ("서울" if "서울" in sido else "인천" if "인천" in sido
-             else "경기" if "경기" in sido else sido.replace("특별시", "").replace("광역시", "").replace("도", ""))
+    else "경기" if "경기" in sido else sido.replace("특별시", "").replace("광역시", "").replace("도", ""))
     if short in ("서울", "인천"):
         for t in p[1:]:
             if t.endswith("구") or t.endswith("군"):
@@ -106,18 +118,18 @@ def extract_floor(text):
 def extract_apt_name(addr, bld):
     """단지/건물명 추정. ①도로명주소 '(동명, 건물명)'의 건물명 → ②접미사 패턴 → ③동명 폴백."""
     addr = addr or ""
-    for grp in re.findall(r'\(([^)]+)\)', addr):      # ① "(매탄동, 매탄위브하늘채)" → 콤마 뒤 건물명
+    for grp in re.findall(r'\(([^)]+)\)', addr):  # ① "(매탄동, 매탄위브하늘채)" → 콤마 뒤 건물명
         if "," in grp:
             nm = grp.split(",")[-1].strip()
             if nm and not re.fullmatch(r'[\d\-.,\s]+', nm) and not nm.endswith(("동", "호", "층", "가")):
                 return nm
     suffix = ("|".join(_TEXT_RULES.get("apt_suffixes", ["아파트"])) or "아파트")
     pat = re.compile(r'([가-힣A-Za-z0-9]{2,}(?:%s)\d*(?:단지)?)' % suffix)
-    for src in (bld or "", addr):                     # ② 건물명 접미사
+    for src in (bld or "", addr):  # ② 건물명 접미사
         m = pat.search(src)
         if m:
             return m.group(1)
-    m = re.search(r'([가-힣]+(?:동|읍|면))', addr)      # ③ 동/읍/면 폴백
+    m = re.search(r'([가-힣]+(?:동|읍|면))', addr)  # ③ 동/읍/면 폴백
     return m.group(1) if m else ""
 
 
@@ -160,7 +172,8 @@ def make_opener():
             "Accept": "text/html,application/xhtml+xml,*/*;q=0.8"})
         op.open(req, timeout=12).read()
     except Exception as e:  # noqa: BLE001
-        print(f"[crawl] 세션 초기화 경고(무시하고 진행): {type(e).__name__}", file=sys.stderr)
+        reason = getattr(e, "reason", "") or getattr(e, "strerror", "") or ""
+        print(f"[crawl] 세션 초기화 경고(무시하고 진행): {type(e).__name__}: {reason}", file=sys.stderr)
     return op
 
 
@@ -201,7 +214,8 @@ def fetch_page(opener, page, bgn, end, timeout=12, retries=3):
                 print(f"[crawl] p{page} HTTP {e.code}", file=sys.stderr, flush=True)
         except Exception as e:  # noqa: BLE001
             if attempt == retries - 1:
-                print(f"[crawl] p{page} {type(e).__name__}", file=sys.stderr, flush=True)
+                reason = getattr(e, "reason", "") or getattr(e, "strerror", "") or ""
+                print(f"[crawl] p{page} {type(e).__name__}: {reason}", file=sys.stderr, flush=True)
         time.sleep(0.35 * (attempt + 1) + random.uniform(0.05, 0.15))
     return None, None
 
@@ -230,7 +244,8 @@ def row_to_item(row, f):
     item = {"id": f"{court}_{case}_{seq}", "court": court, "case_no": case, "address": addr,
             "region": region_from_address(addr), "type": type_from_usage(usage),
             "apt_name": extract_apt_name(addr, bld),
-            "lawd_cd": (row.get("srchHjguSiguCd") if (str(row.get("srchHjguSiguCd") or "").isdigit() and len(str(row.get("srchHjguSiguCd")))==5) else lawd_from_address(addr)),
+            "lawd_cd": (row.get("srchHjguSiguCd") if (str(row.get("srchHjguSiguCd") or "").isdigit() and len(
+                str(row.get("srchHjguSiguCd"))) == 5) else lawd_from_address(addr)),
             "exclusive_area": extract_area(bld), "floor": extract_floor(row.get("buldList") or bld),
             "total_floors": int(tf.group(1)) if tf else None,
             "built_year": int(by.group(1)) if by else None,
@@ -239,7 +254,8 @@ def row_to_item(row, f):
             "usage_detail": usage or None, "views": _to_int(row.get("inqCnt")), "dept": row.get("jpDeptNm") or None,
             "appraisal": appr, "min_bid": _to_int(row.get("minmaePrice"), appr),
             "fail_rounds": _to_int(row.get("yuchalCnt")), "sale_date": sale_date,
-            "eviction": "normal", "market_price_override": None, "photos": [], "bo_cd": row.get("boCd"), "maemul_ser": seq,
+            "eviction": "normal", "market_price_override": None, "photos": [], "bo_cd": row.get("boCd"),
+            "maemul_ser": seq,
             "reg_rights": [], "tenants": []}  # 물건상세(등기·임차)에서 채우면 배당표 자동 계산
     item.update(analyze_rights(row))
     return item
@@ -262,7 +278,7 @@ def crawl(cfg):
     t0 = time.time()
     print(f"[crawl] 수집 시작 · 기간 {bgn}~{end} · 워커 {workers}", flush=True)
     print("[crawl] 세션 준비 중...", flush=True)
-    opener = make_opener()          # 세션 1개(데운)를 모든 스레드가 공유
+    opener = make_opener()  # 세션 1개(데운)를 모든 스레드가 공유
     print("[crawl] 1페이지 조회(총건수 확인) 중...", flush=True)
     first_rows, total = fetch_page(opener, 1, bgn, end, timeout, retries)
     if first_rows is None:
@@ -299,11 +315,12 @@ def crawl(cfg):
             take(rows)
         done = chunk[-1]
         pctv = done * 100 // total_pages
-        print(f"[crawl] {done}/{total_pages}p ({pctv}%) · 응답 {ok}/{len(chunk)} · 누적 {len(props)}건 · {time.time()-t0:.0f}s",
-              flush=True)
+        print(
+            f"[crawl] {done}/{total_pages}p ({pctv}%) · 응답 {ok}/{len(chunk)} · 누적 {len(props)}건 · {time.time() - t0:.0f}s",
+            flush=True)
         if len(props) >= cap:
             break
-    print(f"[crawl] 완료: 수집 {len(props)}건 · 총 {time.time()-t0:.0f}s", flush=True)
+    print(f"[crawl] 완료: 수집 {len(props)}건 · 총 {time.time() - t0:.0f}s", flush=True)
     return props
 
 
@@ -345,7 +362,7 @@ def fetch_past_page(opener, page, timeout=12, retries=3):
 
 def past_row_to_item(row, f, cutoff):
     won = _to_int(row.get("maeAmt"))
-    if won <= 0:                                  # 낙찰 건만
+    if won <= 0:  # 낙찰 건만
         return None
     appr = _to_int(row.get("gamevalAmt"))
     if appr < f["min_appr"] or appr > f["max_appr"]:
@@ -357,7 +374,7 @@ def past_row_to_item(row, f, cutoff):
     if not any(s in sido for s in f["sido"]):
         return None
     raw = str(row.get("maeGiil", ""))
-    if len(raw) == 8 and raw < cutoff:            # 최근 N일만
+    if len(raw) == 8 and raw < cutoff:  # 최근 N일만
         return None
     case = row.get("srnSaNo", "")
     if not case:
@@ -415,10 +432,10 @@ def crawl_past(cfg):
         before = len(out)
         for rows in res:
             take(rows)
-        print(f"[past] ~{chunk[-1]}/{total_pages}p · 누적 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
-        if out and len(out) == before:            # 최근 구간을 지나 더 안 늘면 종료
+        print(f"[past] ~{chunk[-1]}/{total_pages}p · 누적 {len(out)}건 · {time.time() - t0:.0f}s", flush=True)
+        if out and len(out) == before:  # 최근 구간을 지나 더 안 늘면 종료
             break
-    print(f"[past] 완료: 낙찰 {len(out)}건 · {time.time()-t0:.0f}s", flush=True)
+    print(f"[past] 완료: 낙찰 {len(out)}건 · {time.time() - t0:.0f}s", flush=True)
     return out
 
 
@@ -432,9 +449,9 @@ def parse_detail(res):
     photos = []
     for pic in res.get("csPicLst", []) or []:
         data = pic.get("picFile") or ""
-        if isinstance(data, str) and data.startswith("/9j/"):        # JPEG base64 인라인
+        if isinstance(data, str) and data.startswith("/9j/"):  # JPEG base64 인라인
             photos.append("data:image/jpeg;base64," + data)
-        elif isinstance(data, str) and data.startswith("iVBOR"):     # PNG base64
+        elif isinstance(data, str) and data.startswith("iVBOR"):  # PNG base64
             photos.append("data:image/png;base64," + data)
     schedule = []
     for x in res.get("gdsDspslDxdyLst", []) or []:
@@ -465,8 +482,9 @@ def fetch_detail(opener, court_cd, cs_no, seq, timeout=15, retries=2):
                "SC-Pgmid": "PGJ15BM01", "submissionid": "mf_wfm_mainFrame_sbm_selectGdsDtlSrchDtlInfo",
                "Referer": BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml"}
     payload = {"dma_srchGdsDtlSrch": {"csNo": cs_no, "cortOfcCd": court_cd, "dspslGdsSeq": str(seq),
-               "pgmId": "PGJ151F01", "srchInfo": {"bidDvsCd": "000331", "mvprpRletDvsCd": "00031R",
-               "cortAuctnSrchCondCd": "0004601", "cortOfcCd": court_cd}}}
+                                      "pgmId": "PGJ151F01",
+                                      "srchInfo": {"bidDvsCd": "000331", "mvprpRletDvsCd": "00031R",
+                                                   "cortAuctnSrchCondCd": "0004601", "cortOfcCd": court_cd}}}
     for attempt in range(retries):
         try:
             req = urllib.request.Request(DETAIL_EP, data=json.dumps(payload).encode("utf-8"),
@@ -503,8 +521,8 @@ def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pa
         # 1) courtauction: encParam 발급(+세션)
         r1 = _post_json(opener, BASE + "/pgj/pgj15B/insertDspslGdsSpecArtcWdrwInf.on",
                         {"dma_dspslGdsSpecLog": {"cortOfcCd": court, "csNo": cs_no14,
-                         "dspslGdsSeq": int(seq or 1), "orvParam": orv_param or "",
-                         "dspslGdsSpcfcEcdocId": ecdoc_id}}, BASE + "/pgj/index.on")
+                                                 "dspslGdsSeq": int(seq or 1), "orvParam": orv_param or "",
+                                                 "dspslGdsSpcfcEcdocId": ecdoc_id}}, BASE + "/pgj/index.on")
         info = (r1.get("data") or {}).get("dma_dspslSpcfcInfo") or {}
         enc, ecfs_url = info.get("encParam"), info.get("url")
         if not (enc and ecfs_url):
@@ -513,13 +531,13 @@ def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pa
         try:
             sep = "&" if "?" in ecfs_url else "?"
             opener.open(urllib.request.Request(ecfs_url + sep + "encParam=" + enc,
-                        headers={"User-Agent": UA}), timeout=timeout_default()).read()
+                                               headers={"User-Agent": UA}), timeout=timeout_default()).read()
         except Exception:  # noqa: BLE001
             pass
         # 3) getPdf → streamdocsId
         r3 = _post_json(opener, ECFS + "/sgvo/sgvomain/getPdf.on",
                         {"dma_srchEdms": {"ecdocId": ecdoc_id, "ecdocDtlSeq": "1",
-                         "csNo": cs_no14, "extnlUserYn": "Y", "bubviewerYn": "N", "jobKind": "JH"}},
+                                          "csNo": cs_no14, "extnlUserYn": "Y", "bubviewerYn": "N", "jobKind": "JH"}},
                         ECFS + "/sgvo/websquare/websquare.html")
         sdoc = (r3.get("data") or {}).get("streamdocsId")
         if not sdoc:
@@ -529,7 +547,8 @@ def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pa
         for n in range(max_pages):
             try:
                 req = urllib.request.Request(f"{SDOC}/{sdoc}/texts/{n}",
-                      headers={"User-Agent": UA, "Referer": "https://pvo.scourt.go.kr/streamdocs/view"})
+                                             headers={"User-Agent": UA,
+                                                      "Referer": "https://pvo.scourt.go.kr/streamdocs/view"})
                 pages[n] = json.loads(opener.open(req, timeout=15).read().decode("utf-8"))
             except Exception:  # noqa: BLE001
                 break
@@ -593,7 +612,7 @@ def parse_specification(pages):
                             "lease_start": f"{g[0]}-{g[1]}-{g[2]}",
                             "movein": f"{g[4]}-{g[5]}-{g[6]}",
                             "fixed": f"{g[7]}-{g[8]}-{g[9]}",
-                            "demand": True})   # 배당요구 여부는 열 위치 기반으로 추후 정밀화
+                            "demand": True})  # 배당요구 여부는 열 위치 기반으로 추후 정밀화
     return {"base_date": base_date, "demand_end": demand_end, "tenants": tenants}
 
 

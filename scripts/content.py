@@ -11,7 +11,13 @@
 데이터 출처: 법원경매정보(물건)·국토부 실거래가(시세)·공동주택 단지정보(세대수·시공사·주차·난방 등).
 표준 라이브러리만 사용.
 """
-import os, sys, json, re, hashlib, urllib.parse, urllib.request
+import hashlib
+import json
+import os
+import re
+import sys
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone, timedelta
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -27,6 +33,8 @@ def _cfg_json(name, default):
         except Exception:
             return default
     return default
+
+
 KST = timezone(timedelta(hours=9))
 DAILY_COUNT = 10
 
@@ -34,6 +42,8 @@ DAILY_COUNT = 10
 _BLOG = _cfg_json("blog-config.json", {})
 BLOG_NAME = _BLOG.get("blog_name", "매일경매레터")
 NICK = _BLOG.get("nick", "경매노트")
+
+
 # ─────────────────────────────────────────────────────────────
 
 
@@ -51,7 +61,7 @@ def won(n):
         return "—"
     neg = n < 0
     n = abs(int(round(n)))
-    eok, man = n // 10**8, round((n % 10**8) / 10**4)
+    eok, man = n // 10 ** 8, round((n % 10 ** 8) / 10 ** 4)
     s = f"{eok}억 {man:,}만" if eok else f"{man:,}만"
     return ("−" if neg else "") + s + "원"
 
@@ -61,7 +71,7 @@ def pyeong(area):
 
 
 def pct(x):
-    return f"{x*100:.0f}%" if x is not None else "—"
+    return f"{x * 100:.0f}%" if x is not None else "—"
 
 
 def slugify(s):
@@ -120,7 +130,7 @@ NAVER_ID = os.environ.get("NAVER_CLIENT_ID", "").strip()
 NAVER_SECRET = os.environ.get("NAVER_CLIENT_SECRET", "").strip()
 PHOTO_CACHE = os.path.join(DATA, "photo-cache.json")
 try:
-    _img_cache = json.load(open(PHOTO_CACHE, encoding="utf-8"))   # 영구 캐시(정적 사진)
+    _img_cache = json.load(open(PHOTO_CACHE, encoding="utf-8"))  # 영구 캐시(정적 사진)
 except Exception:  # noqa: BLE001
     _img_cache = {}
 _img_dirty = False
@@ -140,7 +150,7 @@ def naver_images(query, n=2):
     global _img_dirty
     if not query:
         return []
-    if query in _img_cache:                       # 캐시 히트 → API 호출 안 함
+    if query in _img_cache:  # 캐시 히트 → API 호출 안 함
         return _img_cache[query][:n]
     if not (NAVER_ID and NAVER_SECRET):
         return []
@@ -151,7 +161,8 @@ def naver_images(query, n=2):
             "X-Naver-Client-Id": NAVER_ID, "X-Naver-Client-Secret": NAVER_SECRET})
         with urllib.request.urlopen(req, timeout=8) as r:
             data = json.loads(r.read().decode("utf-8"))
-        out = [it.get("thumbnail") or it.get("link") for it in data.get("items", []) if it.get("thumbnail") or it.get("link")]
+        out = [it.get("thumbnail") or it.get("link") for it in data.get("items", []) if
+               it.get("thumbnail") or it.get("link")]
     except Exception:  # noqa: BLE001
         out = []
     _img_cache[query] = out
@@ -176,11 +187,11 @@ def fetch_photos(r):
     return {"apt": apt, "community": comm, "orig": r.get("photos") or [],
             "court": court_image(r.get("court"))}
 
+
 _FB_CTA = ["궁금하신 분은 댓글 남겨주시면 알려드릴게요."]
 CTA_LINES = _BLOG.get("cta_lines", _FB_CTA)
 
 TITLE_INTRO = _BLOG.get("title_intro", ["오늘 살펴볼 물건은 <b>{reg} {nm}</b>입니다."])
-
 
 STYLE = """
 <meta charset="utf-8">
@@ -211,8 +222,7 @@ STYLE = """
 </style>
 """
 
-
-BRANDS = _cfg_json("text-rules.json", {}).get("brands", ["자이","푸르지오","힐스테이트","래미안","e편한세상"])
+BRANDS = _cfg_json("text-rules.json", {}).get("brands", ["자이", "푸르지오", "힐스테이트", "래미안", "e편한세상"])
 
 
 def tag_line(r):
@@ -273,16 +283,18 @@ def schedule_table(r):
         pv = round((ratio ** k) * 100)
         cur = (k == fr)
         date = (r.get("sale_date") or "예정") if cur else "—"
-        rows += (f'<tr class="{ "now" if cur else "" }"><td class="c">{k+1}차{" (예정)" if cur else ""}</td>'
+        rows += (f'<tr class="{"now" if cur else ""}"><td class="c">{k + 1}차{" (예정)" if cur else ""}</td>'
                  f'<td class="c">{date}</td><td class="r">{low:,.0f}원</td><td class="c">{pv}%</td></tr>')
     return (f'<table><tr><th>회차</th><th>매각기일</th><th>최저가</th><th>비율</th></tr>{rows}</table>')
 
 
 def complex_table(r):
     rows = []
-    add = lambda k, v: rows.append(f'<tr><th style="width:38%">{k}</th><td>{v}</td></tr>') if v not in (None, "", "—") else None
+    add = lambda k, v: rows.append(f'<tr><th style="width:38%">{k}</th><td>{v}</td></tr>') if v not in (
+    None, "", "—") else None
     add("시공사", r.get("builder"))
-    add("사용승인(준공)", y(r.get("approve_date")) if r.get("approve_date") else (str(r["built_year"]) + "년" if r.get("built_year") else None))
+    add("사용승인(준공)", y(r.get("approve_date")) if r.get("approve_date") else (
+        str(r["built_year"]) + "년" if r.get("built_year") else None))
     hh = r.get("households")
     dc = r.get("dong_count")
     if hh:
@@ -304,16 +316,16 @@ def area_table(r):
     if area:
         rows += f'<tr><th style="width:38%">전용면적</th><td>{area:.2f}㎡ ({py}평)</td></tr>'
     rows += f'<tr><th>감정가</th><td>{won(r["appraisal"])}</td></tr>'
-    rows += f'<tr><th>최저입찰가</th><td>{won(r["min_bid"])} (유찰 {r.get("fail_rounds",0)}회)</td></tr>'
+    rows += f'<tr><th>최저입찰가</th><td>{won(r["min_bid"])} (유찰 {r.get("fail_rounds", 0)}회)</td></tr>'
     if r.get("price_per_pyeong"):
-        rows += f'<tr><th>실거래 평단가</th><td>약 {round(r["price_per_pyeong"]/1e4):,}만원/평</td></tr>'
+        rows += f'<tr><th>실거래 평단가</th><td>약 {round(r["price_per_pyeong"] / 1e4):,}만원/평</td></tr>'
     return '<h2>면적 · 가격</h2><table>' + rows + '</table>'
 
 
 def market_para(r):
     if r.get("molit_count"):
         rng = f"{won(r['molit_low'])}~{won(r['molit_high'])}" if r.get("molit_low") else won(r["market_price"])
-        pp = f" 전용 기준 평단가는 약 {round(r['price_per_pyeong']/1e4):,}만원 수준이고요." if r.get("price_per_pyeong") else ""
+        pp = f" 전용 기준 평단가는 약 {round(r['price_per_pyeong'] / 1e4):,}만원 수준이고요." if r.get("price_per_pyeong") else ""
         return (f"국토교통부 실거래가를 보면 이 단지·면적대는 최근 <b>{r['molit_count']}건</b> 거래됐고, "
                 f"가격대는 <b>{rng}</b>에 형성돼 있습니다.{pp} 감정가가 {won(r['appraisal'])}이니 "
                 f"실거래·감정가를 같이 놓고 보면 대략의 눈높이가 잡힙니다.")
@@ -357,25 +369,26 @@ def generate_post(r, rank):
     # 사건 요약
     body_line = []
     if area:
-        body_line.append(f"{r.get('floor','')}층 " if r.get('floor') else "")
+        body_line.append(f"{r.get('floor', '')}층 " if r.get('floor') else "")
         body_line.append(f"{area:.0f}㎡ {round(py)}평 ")
-        body_line.append(f"{r.get('orientation','')}" if r.get('orientation') else "")
+        body_line.append(f"{r.get('orientation', '')}" if r.get('orientation') else "")
     summ = (f"<b>{r.get('court') or ''} {r.get('case_no') or ''}</b><br>{r.get('address') or reg}<br>"
-            f"{''.join(body_line)}<br>최저가 {won(r['min_bid'])} · 감정가 {won(r['appraisal'])} · 유찰 {r.get('fail_rounds',0)}회"
+            f"{''.join(body_line)}<br>최저가 {won(r['min_bid'])} · 감정가 {won(r['appraisal'])} · 유찰 {r.get('fail_rounds', 0)}회"
             + (f"<br>매각기일 {r.get('sale_date')}" if r.get("sale_date") else ""))
 
     # 입지·단지 스토리
     hh = r.get("households")
-    approve = y(r.get("approve_date")) if r.get("approve_date") else (str(r["built_year"]) + "년" if r.get("built_year") else None)
+    approve = y(r.get("approve_date")) if r.get("approve_date") else (
+        str(r["built_year"]) + "년" if r.get("built_year") else None)
     story = f"{intro} "
     if approve:
-        story += f"{approve.replace('년','')}년에 준공된 단지로, "
+        story += f"{approve.replace('년', '')}년에 준공된 단지로, "
     if hh:
         story += f"총 {hh:,}세대" + (f"({r['dong_count']}개동)" if r.get("dong_count") else "") + " 규모입니다. "
     if r.get("builder"):
         story += f"{r['builder']}가 시공했고요. "
     if r.get("floor"):
-        story += f"본 물건은 {r['floor']}층{('·'+r['orientation']) if r.get('orientation') else ''}이라 "
+        story += f"본 물건은 {r['floor']}층{('·' + r['orientation']) if r.get('orientation') else ''}이라 "
         story += "채광·전망 측면에서 무난합니다. " if (r.get("floor") or 0) >= 5 else "저층이라 이 부분은 임장 때 직접 확인해보시길 권합니다. "
 
     body = STYLE + f"""
@@ -408,13 +421,13 @@ def generate_post(r, rank):
 <table>
 <tr><th style="width:40%">적정 입찰가(권장)</th><td class="c">{LOCK}</td></tr>
 <tr><th>예상 순이익 · 수익률</th><td class="c">{LOCK}</td></tr>
-<tr><th>낙찰 성공률(참고)</th><td class="c">{pct(r.get('success_prob'))} · 환금성 {(r.get('liquidity') or {}).get('grade','—')}등급</td></tr>
+<tr><th>낙찰 성공률(참고)</th><td class="c">{pct(r.get('success_prob'))} · 환금성 {(r.get('liquidity') or {}).get('grade', '—')}등급</td></tr>
 </table>
 <div class="ask"><b>💬 적정 입찰가·예상 수익 문의</b><br>{cta}</div>
 
 <h2>정리</h2>
-<p>{'입지·환금성이 받쳐주는 물건입니다. ' if (r.get('liquidity') or {}).get('score',0)>=55 else '환금성은 다소 아쉬우니 매도 기간을 넉넉히 잡는 게 좋습니다. '}
-권리 위험은 {(r.get('rights_risk') or {}).get('level','낮음')} 수준으로 봤고요. 꼼꼼히 확인하시고 무리하지 않는 선에서 도전해보시기 바랍니다. 비슷하게 보고 계신 분, 임장 다녀오신 분 있으면 댓글로 정보 나눠요.</p>
+<p>{'입지·환금성이 받쳐주는 물건입니다. ' if (r.get('liquidity') or {}).get('score', 0) >= 55 else '환금성은 다소 아쉬우니 매도 기간을 넉넉히 잡는 게 좋습니다. '}
+권리 위험은 {(r.get('rights_risk') or {}).get('level', '낮음')} 수준으로 봤고요. 꼼꼼히 확인하시고 무리하지 않는 선에서 도전해보시기 바랍니다. 비슷하게 보고 계신 분, 임장 다녀오신 분 있으면 댓글로 정보 나눠요.</p>
 
 <p class="sign">— {BLOG_NAME} · {NICK}</p>
 <div class="tags">{tag_line(r)}</div>
@@ -427,15 +440,15 @@ def generate_past_post(c, rank):
     nm = c["region"] + " " + c["type"]
     s = _seed(c["id"])
     cta = _pick(CTA_LINES, s, 3)
-    title = f"[경매 복기] {c['region']} {c['type']} 낙찰 → 재매도 수익률 {c['roi']*100:.0f}%"
+    title = f"[경매 복기] {c['region']} {c['type']} 낙찰 → 재매도 수익률 {c['roi'] * 100:.0f}%"
     body = STYLE + f"""
 <div class="auc">
 <p class="kw">#{c['region'].split()[0]}경매 #경매복기 #부동산경매</p>
 <p>안녕하세요, <b>{NICK}</b>입니다. 오늘은 이미 끝난 경매를 복기해봅니다.</p>
-<div class="summary"><b>{c['region']} {c['type']}</b><br>감정가 {won(c.get('appraisal'))} · 낙찰가율 {c.get('sale_ratio','—')}%<br>재매도 수익률 <b>{c['roi']*100:.1f}%</b></div>
+<div class="summary"><b>{c['region']} {c['type']}</b><br>감정가 {won(c.get('appraisal'))} · 낙찰가율 {c.get('sale_ratio', '—')}%<br>재매도 수익률 <b>{c['roi'] * 100:.1f}%</b></div>
 <h2>결과 요약</h2>
-<p>이 물건은 낙찰가율 {c.get('sale_ratio','—')}%에 낙찰됐고, 응찰자는 약 {c.get('bidders','—')}명이었습니다.
-이후 재매도까지 이어지며 최종 수익률 <b>{c['roi']*100:.1f}%</b>를 남긴 사례입니다. 실제 낙찰가·매도가·순이익 액수는 아껴둘게요.</p>
+<p>이 물건은 낙찰가율 {c.get('sale_ratio', '—')}%에 낙찰됐고, 응찰자는 약 {c.get('bidders', '—')}명이었습니다.
+이후 재매도까지 이어지며 최종 수익률 <b>{c['roi'] * 100:.1f}%</b>를 남긴 사례입니다. 실제 낙찰가·매도가·순이익 액수는 아껴둘게요.</p>
 <div class="ask"><b>💬 이 사례 실제 숫자 문의</b><br>{cta}</div>
 <p>지금 진행 중인 비슷한 물건에 이 기준을 대입해보면 감을 잡기 좋습니다.</p>
 <p class="sign">— {BLOG_NAME} · {NICK}</p>
@@ -491,10 +504,11 @@ def main():
         index.append({"rank": rank, "kind": kind, "id": pid, "title": title, "file": fname})
     json.dump({"date": day, "count": len(index), "posts": index},
               open(os.path.join(outdir, "index.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-    json.dump(published, open(os.path.join(DATA, "published.json"), "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+    json.dump(published, open(os.path.join(DATA, "published.json"), "w", encoding="utf-8"), ensure_ascii=False,
+              indent=2)
     save_photo_cache()
     cur = sum(1 for k, _ in picks if k == "current")
-    print(f"[content] {day}: {len(index)}편 (현재 {cur}/과거 {len(index)-cur}) → content/{day}/")
+    print(f"[content] {day}: {len(index)}편 (현재 {cur}/과거 {len(index) - cur}) → content/{day}/")
     for x in index:
         print(f"  {x['rank']:>2}. {x['title'][:52]}")
 

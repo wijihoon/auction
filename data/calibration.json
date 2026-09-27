@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-09-28T07:11:20.877748+09:00",
+  "generated_at": "2026-09-28T07:32:08.667924+09:00",
   "how_to_use": "이 파일을 업로드해 예측 오차 기반으로 baselines/assumptions 튜닝을 요청하세요.",
   "assumptions_snapshot": {
     "target_profit_rate": 0.15,
@@ -7,10 +7,10 @@
     "win_target": 0.6,
     "competition": {
       "ref_bidders": 5,
-      "k_ratio_per_bidder": 1.4,
+      "k_ratio_per_bidder": 1.6,
       "discount_boost": 0.9,
       "fail_damp": 0.14,
-      "history_weight": 0.4
+      "history_weight": 0.5
     },
     "score_weights": {
       "liquidity": 0.35,

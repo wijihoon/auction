@@ -69,10 +69,10 @@
   ],
   "competition": {
     "ref_bidders": 5,
-    "k_ratio_per_bidder": 1.4,
+    "k_ratio_per_bidder": 1.6,
     "discount_boost": 0.9,
     "fail_damp": 0.14,
-    "history_weight": 0.4
+    "history_weight": 0.5
   },
   "floor_adj": {
     "low": -0.04,
@@ -87,7 +87,7 @@
     "서향": -0.01,
     "북향": -0.03
   },
-  "resale_cv": 0.06,
+  "resale_cv": 0.05,
   "win_target": 0.6,
   "illiquid_margin_add": 0.1,
   "liquidity": {
@@ -114,7 +114,7 @@
   "history_lookback_days": 30,
   "molit_months": 6,
   "molit_workers": 8,
-  "wc_cap": 0.2,
+  "wc_cap": 0.12,
   "unpaid_mgmt_reserve_m2": 15000,
   "auction_cost_rate": 0.015,
   "photo_top_n": 12,

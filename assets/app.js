@@ -24,7 +24,7 @@ function card(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rights_
   const costs=Object.entries(r.cost_items||{}).map(([k,v])=>v?`<tr><td>− ${k}</td><td>${won(v)}원</td></tr>`:"").join("");
   const py=r.price_per_pyeong?Math.round(r.price_per_pyeong/1e4).toLocaleString()+"만원/평":null;const rng=(r.molit_low&&r.molit_high)?won(r.molit_low)+"~"+won(r.molit_high)+"원":null;const built=r.approve_date?String(r.approve_date).slice(0,4):(r.built_year||r.build_year);const info=[["소재지",r.address],["건물내역",r.building_detail],["세대수",r.households?r.households.toLocaleString()+"세대"+(r.dong_count?" · "+r.dong_count+"개동":""):null],["층",r.floor?(r.floor+"층"+(r.total_floors?" / 총 "+r.total_floors+"층":"")):null],["준공",built?built+"년":null],["실거래(최근)",r.molit_count?r.molit_count+"건":null],["평단가",py],["최근 실거래가",rng],["매각기일",r.sale_date],["비고",r.note]].filter(x=>x[1]);
   const infoHTML=info.length?`<div class="dtitle">물건 정보</div><table class="kv">${info.map(([k,v])=>`<tr><td style="white-space:nowrap">${k}</td><td style="text-align:left;color:var(--tx);font-weight:500">${v}</td></tr>`).join("")}</table>`:"";
-  const photosHTML=(r.photos&&r.photos.length)?`<div class="photos">${r.photos.map(u=>`<img src="${u}" loading="lazy" alt="물건 사진">`).join("")}</div>`:"";
+  const photosHTML=(r.photos&&r.photos.length)?`<div class="carousel" data-idx="0"><img class="cimg" src="${r.photos[0]}" alt="물건 사진">${r.photos.length>1?`<button type="button" class="cnav cprev">‹</button><button type="button" class="cnav cnext">›</button><span class="ccount">1 / ${r.photos.length}</span>`:""}</div>`:"";
   return `<div class="card" data-i="${i}" data-type="${r.type}">
     <div class="chead">
       <div class="score ${scc}">${r.score}</div>
@@ -70,6 +70,22 @@ function toggle(btn){const c=btn.closest(".card");const open=c.classList.toggle(
 }
 
 function toggleFav(id){if(FAV.has(id))FAV.delete(id);else FAV.add(id);try{localStorage.setItem("auc_fav",JSON.stringify([...FAV]))}catch(e){}}
+function openLightbox(photos,idx){
+  let i=idx||0;let lb=document.getElementById("lightbox");
+  if(!lb){lb=document.createElement("div");lb.id="lightbox";lb.className="lightbox";
+    lb.innerHTML='<button type="button" class="lb-close">×</button><button type="button" class="lb-nav lb-prev">‹</button><img alt="물건 사진"><button type="button" class="lb-nav lb-next">›</button><span class="lb-count"></span>';
+    document.body.appendChild(lb);}
+  const img=lb.querySelector("img"),cnt=lb.querySelector(".lb-count");
+  const show=()=>{img.src=photos[i];cnt.textContent=`${i+1} / ${photos.length}`;
+    lb.querySelectorAll(".lb-nav").forEach(b=>b.style.display=photos.length>1?"flex":"none");};
+  const close=()=>{lb.style.display="none";document.onkeydown=null;};
+  lb.querySelector(".lb-prev").onclick=e=>{e.stopPropagation();i=(i-1+photos.length)%photos.length;show();};
+  lb.querySelector(".lb-next").onclick=e=>{e.stopPropagation();i=(i+1)%photos.length;show();};
+  lb.querySelector(".lb-close").onclick=close;
+  lb.onclick=e=>{if(e.target===lb)close();};
+  document.onkeydown=e=>{if(e.key==="Escape")close();else if(e.key==="ArrowLeft")lb.querySelector(".lb-prev").click();else if(e.key==="ArrowRight")lb.querySelector(".lb-next").click();};
+  show();lb.style.display="flex";
+}
 let REGION="",VERDICT="",Q="",SPECIAL="",PAGE=1,RENDERED=[];const PAGESIZE=40;
 let FAV=new Set(),FAVONLY=false;try{FAV=new Set(JSON.parse(localStorage.getItem("auc_fav")||"[]"))}catch(e){}
 const SORT={score:(a,b)=>b.score-a.score,roi:(a,b)=>b.roi-a.roi,profit:(a,b)=>b.net_profit-a.net_profit,win:(a,b)=>b.success_prob-a.success_prob,sched:(a,b)=>((a.sale_date||"9999")<(b.sale_date||"9999")?-1:1)};
@@ -278,6 +294,15 @@ function boot(){
   el("special").onchange=()=>{SPECIAL=el("special").value;renderFeed();};
   el("favbtn").onclick=()=>{FAVONLY=!FAVONLY;el("favbtn").classList.toggle("on",FAVONLY);el("favbtn").textContent=(FAVONLY?"★":"☆")+" 관심";renderFeed();};
   el("feed").addEventListener("click",e=>{const f=e.target.closest(".fav");if(!f)return;e.stopPropagation();toggleFav(f.dataset.id);f.textContent=FAV.has(f.dataset.id)?"★":"☆";if(FAVONLY)renderFeed();});
+  el("feed").addEventListener("click",e=>{
+    const t=e.target.closest(".cprev,.cnext,.cimg");if(!t)return;
+    const card=t.closest(".card");const r=card&&RENDERED[+card.dataset.i];if(!r||!r.photos||!r.photos.length)return;
+    const car=t.closest(".carousel");const n=r.photos.length;let idx=+(car.dataset.idx||0);
+    if(t.classList.contains("cimg")){openLightbox(r.photos,idx);return;}
+    idx=t.classList.contains("cprev")?(idx-1+n)%n:(idx+1)%n;
+    car.dataset.idx=idx;car.querySelector(".cimg").src=r.photos[idx];
+    const cc=car.querySelector(".ccount");if(cc)cc.textContent=`${idx+1} / ${n}`;
+  });
   el("more").onclick=()=>{PAGE++;paint(false);};
   el("pq").oninput=()=>{PQ=el("pq").value.trim().toLowerCase();paintPast(true);};
   el("pregion").onchange=()=>{PREGION=el("pregion").value;paintPast(true);};

@@ -1,110 +1,120 @@
-# 경매 분석 · 자동 수집형
+# 경매 분석 자동화 시스템
 
-부동산 경매 물건을 **매일 자동으로 수집·분석**해 ① 적정 입찰가 ② 낙찰 성공률(경쟁도 반영) ③ 낙찰 후 재매매 순이익을 계산하고, 과거 실현 사례로 통계를 학습·백테스트하는 정적 웹사이트 + GitHub Actions 파이프라인. **사용자 데이터 입력 불필요.**
+부동산 경매 물건을 **매일 자동 수집·분석**해 물건마다 **적정 입찰가 · 낙찰 성공률 · 예상 순이익 · 종합 점수**를 산정하고, 과거 낙찰 데이터로 **실제(추정) 수익률**과 **내 예측 백테스트**를 계산하며, 결과를 **반응형 웹 대시보드**와 **네이버 블로그 콘텐츠**로 자동 생성하는 시스템입니다.
 
-## 파이프라인 (완전 자동)
+- 파이썬 **표준 라이브러리만** 사용, GitHub Actions에서 무료로 매일 실행
+- 대규모 수집(현재 1만+·과거 수만 건)을 고려한 **캐싱·페이지네이션·경량화** 설계
+- 데이터 출처: **법원경매정보** · **국토부 실거래가/공동주택 단지정보** · **네이버 이미지검색**
+
+---
+
+## 1. 파이프라인 (매일 06:00 KST · GitHub Actions)
 
 ```
-[매일 06:00 KST]
-  scripts/crawl.py     법원경매정보(courtauction.go.kr) 내부 JSON API 수집
-      │                  ├ 물건 목록: 감정가·최저가·유찰·소재지·용도·기일
-      │                  └ 현황조사서: 임대차현황 → 대항력·인수보증금 자동 추출
-      ▼
-  data/properties.json
-      │
-  scripts/analyze.py   국토부 실거래가 API로 시세 조회(층·향 보정)
-      │                  → 적정입찰가·성공률·정밀세금·순이익
-      ▼
-  data/analysis.json ──▶ index.html  (Cloudflare 자동 재배포)
+crawl.py   법원경매 크롤 → properties.json(진행) · past-results.json(과거 낙찰)
+   ↓
+analyze.py 시세·적정입찰가·성공률·순이익·점수·특수물건·시장통계 → analysis.json
+                                          예측 백테스트·패인분석 → backtest.json(비공개)
+   ↓
+track.py   예측 스냅샷·실제결과 대조 → predictions/outcomes/calibration.json
+   ↓
+content.py 종합점수 top10 → 네이버 블로그 HTML(사진·태그·블라인드)
+   ↓
+결과 커밋 → Cloudflare/GitHub Pages 배포
 ```
 
-## 데이터 출처와 정직한 한계
+---
 
-| 출처 | 용도 | 성격 |
+## 2. 폴더 구조
+
+```
+auction/
+├─ index.html                     웹 대시보드(구조만)
+├─ assets/
+│  ├─ app.css                     스타일(반응형·다크토큰 등)
+│  └─ app.js                      로직(필터·페이지네이션·차트·미리보기 데이터)
+├─ scripts/
+│  ├─ crawl.py                    진행물건 + 과거 매각결과 수집
+│  ├─ analyze.py                  분석·점수·수익률·특수물건·통계·백테스트
+│  ├─ track.py                    예측→실제 대조(자기학습)
+│  └─ content.py                  블로그 콘텐츠 생성(사진·태그)
+├─ data/
+│  ├─ 설정: crawl-config.json · baselines.json · assumptions.json
+│  ├─ 사전(외부화): lawd-codes.json · text-rules.json · blog-config.json · priority-tenant.json
+│  ├─ 시드/폴백: auction-history.json · properties.sample.json
+│  ├─ (생성) properties · past-results · analysis · backtest · published.json
+│  ├─ (생성) predictions · outcomes · calibration.json
+│  └─ (캐시) molit-cache · apt-list-cache · apt-info-cache · photo-cache · spec-cache.json
+├─ content/<날짜>/*.html          (생성) 블로그 글
+└─ .github/workflows/analyze.yml  자동화 워크플로우
+```
+
+**설정·사전 외부화** — 코드 수정 없이 JSON만 편집해 조정합니다.
+- `crawl-config.json` 수집 조건 · `assumptions.json` 세금·비용·점수 가중치·이론 파라미터 · `baselines.json` 지역·유형별 낙찰가율 기준선
+- `lawd-codes.json` 시군구→법정동코드 · `text-rules.json` 특수물건·인수권리 키워드·브랜드·단지명 접미사 · `blog-config.json` 블로그명·닉네임·문구 · `priority-tenant.json` 소액임차인 최우선변제 기준
+- 파일이 없어도 각 스크립트는 안전한 폴백으로 동작합니다.
+
+---
+
+## 3. 스크립트
+
+- **crawl.py** — 진행물건·과거 매각결과를 세션 재사용·병렬·재시도로 수집. 주소→법정동코드(검색응답 `srchHjguSiguCd` 직접). `--details N`: 상위 N건에 **물건 상세**(실제 사진·회차별 기일·말소기준일·조회수)와 **매각물건명세서**(courtauction→ecfs→StreamDocs 텍스트레이어 파싱 → 임차인 보증금·전입·확정·배당요구)를 보강해 **예상 배당표** 입력을 자동 생성. 옵션 `--sample`·`--active-only`·`--details N`
+- **analyze.py** — 시세(국토부 실거래, 월 단위 캐시)·적정입찰가·성공률·순이익·종합점수·특수물건·시장통계·과거 백테스트 산출. 단지정보(세대수·시공사·주차·난방)·사진용 필드 포함
+- **track.py** — 예측 스냅샷을 실제 결과와 대조해 오차·보정 제안 축적(추후 튜닝)
+- **content.py** — 종합점수 top을 네이버 블로그 리치 HTML로 생성(사진 자동수집·태그 고도화·핵심 금액 블라인드+댓글 유도). 페르소나는 `blog-config.json`
+
+---
+
+## 4. 방법론 (검증된 경매·투자 이론)
+
+| 항목 | 이론 | 계산 |
 |---|---|---|
-| **법원경매정보** courtauction.go.kr | 물건 목록·권리(현황조사서) | 사이트가 내부적으로 쓰는 **비공식 JSON API**. 화면 버튼이 호출하는 것과 동일. 공식 문서 API 아님 → **사이트 개편 시 재보정 필요** |
-| **국토부 실거래가 OpenAPI** data.go.kr | 시세(아파트·오피스텔·연립다세대) | 공식·안정. 서비스키 필요 |
+| 적정 입찰가 ① | 승자의 저주(공통가치 경매) | `보정가치 = 시세 × (1 − 변동계수 × 응찰자수 보정)` |
+| 적정 입찰가 ② | 1차가격 봉인입찰(Vickrey·Milgrom–Weber) | 낙찰가율 분포로 낙찰확률 → 낙찰확률 × 보정순이익 최대가(보수·권장·공격) |
+| 낙찰 성공률 | 낙찰가율 경험분포 + 정규분포 혼합 | 실측 표본↑ → 경험적 CDF 가중↑ + 경쟁도 반영 |
+| 순이익·ROI | — | 보정 매도가 − 낙찰가 − 부대비용(취득·양도세·명도·수리·보유·중개·인수권리) |
+| 점수: 안전마진 | Margin of Safety(Graham) | 보정가치 대비 입찰가 쿠션 |
+| 점수: 위험조정 | Sharpe 개념 | 수익률 ÷ 시세 변동위험 |
+| 자금배분 | Kelly(하프켈리) | `f* = 0.5 × μ/σ²` |
+| 예상 배당표 | 배당순위(경매비용→소액임차 최우선변제→날짜순 우선변제) | 선순위 대항력 임차인 미배당분 = 낙찰자 인수액 |
 
-- 법원경매 크롤러가 깨질 경우를 대비해 워크플로우는 **샘플 폴백**으로 파이프라인을 멈추지 않습니다.
-- 사이트가 개편되면 `scripts/crawl.py`의 `build_search_body()`(요청 본문)와 `parse_rows()`(응답 키) **두 함수만** 실제 응답에 맞춰 보정하면 됩니다. 세션·권리추출·저장 로직은 그대로 동작합니다.
-- 과도한 트래픽을 피하려 `polite_delay`를 둡니다. 개인 리서치 용도로 사용하세요.
+**종합점수** = 가중합(환금성 35 / 안전마진 20 / 위험조정 20 / 권리 15 / 낙찰가능 10) × 환금성 게이트, 순손실 20점 상한.
 
-### 안정 대안 — 온비드 공매 API
-법원경매(court auction)가 아니라 **공매(公賣)** 로도 괜찮다면, 한국자산관리공사 **온비드 물건목록 조회 OpenAPI**(data.go.kr, 공식·서비스키)가 문서화된 안정적 대안입니다. 크롤러 대신 이 API로 `properties.json`을 채우도록 바꿀 수 있습니다.
+---
 
-## 설정
+## 5. 성능·캐싱
 
-### 1. 국토부 실거래가 서비스키
-1. [공공데이터포털](https://www.data.go.kr) → "국토교통부_아파트 매매 실거래가 상세 자료"(+오피스텔·연립다세대) 활용신청
-2. 발급 인증키(Decoding)를 GitHub → Settings → Secrets → Actions → `MOLIT_SERVICE_KEY` 로 등록
-> 키가 없어도 동작(시세는 감정가/override 폴백).
+- **CPU** — 입찰가 탐색을 고정비용 사전계산(`cost_ctx`)+고속 경로(`_pf`)로 최적화, 반복 축소. 약 **7,000건/초**(13,000건 ≈ 2초)
+- **네트워크(캐시, 저장소 커밋으로 유지)**
+  - 실거래가: **월 단위** — 지난 달 캐시 재사용, 이번 달만 재조회
+  - 단지 목록(30일 TTL)·단지 정보·사진: **영구 캐시**(신규만 조회)
+  - 매각물건명세서(임차·권리): **영구 캐시**(`spec-cache.json`, ecdocId 키)
+- **경량화** — `analysis.json` 컴팩트 직렬화, 성공률 곡선 11점, 과거 케이스 상한
+- **프론트** — 40건씩 페이지네이션(수만 건도 가벼움), 상세 곡선은 펼칠 때만 렌더
 
-### 2. 수집 범위 조정 — `data/crawl-config.json`
-```json
-{ "sido": ["경기도","서울특별시","인천광역시"], "usage": ["아파트","오피스텔","연립다세대"],
-  "min_appraisal": 300000000, "sale_date_to_days": 21, "max_properties": 60, "fetch_rights": true }
-```
+---
 
-### 3. 로컬 실행
-```bash
-python3 scripts/crawl.py            # 라이브 수집 (network 필요)
-python3 scripts/crawl.py --sample   # 오프라인: 샘플로 파이프라인 검증
-python3 scripts/analyze.py          # data/analysis.json 생성
-python3 -m http.server 8000         # http://localhost:8000
-```
-표준 라이브러리만 사용 — 설치 불필요.
+## 6. 웹 대시보드
 
-### 4. Cloudflare 무료 배포
-Cloudflare Pages/Workers에 이 저장소 연결 → 빌드 명령 없음, 출력 `/`. `main` 푸시(=봇 커밋)마다 자동 재배포.
+**반응형**: 모바일 1단 / 태블릿·PC(≥880px) 2단 / 와이드 PC(≥1280px) 3단.
 
-## 분석 로직
-- **적정입찰가**: `예상매도가 − 부대비용 − 목표이익` 만족 최대 입찰가(이진탐색).
-- **성공률**: 지역·유형별 낙찰가율 분포(과거사례 blend·유찰 페널티) + **경쟁도(예상 입찰자 수)** 로 기대 낙찰가율 보정 → `P(실제 낙찰가율 ≤ 내 입찰가율)`.
-- **순이익**: `매도가 − 낙찰가 − 인수권리(보증금·유치권) − 부대비용`. 취득세(구간·농특·교육세·중과), 양도세(단기중과·누진·장특공제·지방소득세) 정밀 반영. 과거 실현 사례로 백테스트.
-- **권리 위험도**: 대항력 임차인·인수보증금·특수권리 → 낮음/보통/높음, 판정에 반영.
+- **현재 매물** — 검색 + 필터(지역·유형·판정·특수물건) + **테마경매**(반값·유찰多·고수익·소액·특수·수도권) + 정렬(점수·수익률·성공률·매각임박) + KPI + 페이지네이션. 카드 상세: 3전략가·수익계산(미납관리비 포함)·**예상 배당표(인수/소멸)**·**꼭 확인 인수·리스크 체크리스트**·입찰보증금·**대출 레버리지 수익률**·지도(카카오/네이버)·점수구성·Kelly·성공률 곡선. **관심(★, localStorage)**
+- **과거 실적** — 검색·필터·정렬·페이지네이션 + 시장 통계(매각가율·경쟁률) + 내 예측 vs 실제 낙찰(적중/미달) + 지역별 낙찰가율
+- **산정 방법** — 각 지표 정의·공식·가중치
+- **가이드** — 경매 절차·입찰 방법·용어 사전
 
+데이터가 없을 때도 `app.js` 내장 샘플로 미리보기가 렌더됩니다.
 
+---
 
-## 라이브 수집이 안 될 때 (해외 IP 지오블록)
+## 7. 설치 & 배포
 
-GitHub Actions 러너는 미국·유럽 IP인데, **법원경매정보(courtauction.go.kr)는 해외 데이터센터 IP를 차단/무응답 처리**하는 경우가 많습니다. 로그에 `TimeoutError: timed out`이 `sock.connect` 단계에서 나면 이 경우입니다(HTTP 오류가 아니라 연결 자체가 안 됨 = 네트워크 차단 신호). 이때 크롤러는 트레이스백 없이 **기존 데이터를 보존**하고(최초엔 샘플로) 정상 종료하며, 분석·추적 단계는 계속됩니다.
+1. **API 키(GitHub Secrets)** — `MOLIT_SERVICE_KEY`(국토부 실거래가·공동주택정보) · `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET`(사진). 없어도 해당 기능만 생략하고 동작
+2. **자동화** — `.github/workflows/analyze.yml`을 기본 브랜치(main/master)에. Settings→Actions→Workflow permissions **Read and write**
+3. **배포** — GitHub Pages 또는 Cloudflare Pages(빌드 없음). `index.html` + `assets/`가 함께 배포돼야 함
+4. **로컬** — `python scripts/crawl.py --sample && python scripts/analyze.py && python scripts/content.py` 후 `python -m http.server 8000`
 
-**먼저 확인**: 본인 PC(한국)에서 `python scripts/crawl.py`를 돌려보세요. 여기서 되면 → 지오블록 확정. 안 되면 → 엔드포인트 재보정 필요(아래 '개편 시 보정').
+---
 
-**해결책 (권장 순)**
-1. **한국 IP의 self-hosted 러너** — 집 PC나 국내 VPS(카페24·가비아·NHN클라우드 등)에 GitHub Actions self-hosted runner를 설치하고, `crawl` job만 `runs-on: self-hosted`로 지정. 분석·추적(MOLIT는 해외에서도 접속 가능)은 그대로 GitHub 호스티드 러너에서 돌려도 됩니다.
-2. **국내 서버 cron + push** — 국내 서버에서 `crawl.py`를 cron으로 돌려 `properties.json`을 커밋/푸시. 나머지 파이프라인(analyze·track)은 push 트리거로 GitHub Actions에서 실행.
-3. **한국 프록시** — 크롤 요청만 국내 프록시로 우회(요청에 proxy 핸들러 추가). 프록시 신뢰성·약관 확인 필요.
-4. **온비드(공매) 공식 API로 전환** — 법원경매 대신 공매도 무방하면, 한국자산관리공사 온비드 OpenAPI(data.go.kr)는 해외에서도 접속되는 API 게이트웨이라 러너 위치와 무관하게 동작합니다.
-
-`crawl-config.json`의 `connect_timeout`(기본 25초)·`retries`(기본 2회)를 조정할 수 있으나, 연결 자체가 막힌 경우엔 타임아웃을 늘려도 해결되지 않습니다(위 1~4로).
-
-### 개편 시 보정
-접속은 되는데 결과가 0건이면 사이트 구조가 바뀐 것입니다. `scripts/crawl.py`의 `build_search_body()`(요청 본문)와 `parse_rows()`(응답 키)만 실제 응답에 맞춰 수정하세요.
-
-## 자기고도화 루프 (예측 → 실제 대조 → 학습파일)
-
-매일 예측을 저장해 두고, 그 경매가 끝나 실제 결과가 나오면 예측과 대조해 **오차와 보정 제안**을 별도 파일로 쌓습니다. 이 파일을 나중에 업로드하면 그걸 근거로 모델(baseline·경쟁도·시세·비용)을 튜닝합니다.
-
-`scripts/track.py` (매 실행 crawl→analyze 다음에 자동 실행):
-1. **예측 스냅샷** `data/predictions.json` — 물건별 마지막 예측(권장가·예상 낙찰가율·성공률·응찰자·순이익·환금성·점수)을 보존. 물건이 목록에서 사라져도 남습니다.
-2. **실제 결과** `data/outcomes.json` — 매각기일이 지난 물건의 실제 낙찰가·응찰자수·낙찰여부, 이후 재매도가. (법원경매정보 결과조회로 자동 채우거나, 직접 입력 가능)
-3. **학습 파일** `data/calibration.json` — 예측↔실제를 조인해 오차 계산:
-   - `ratio_err` 예측 낙찰가율 vs 실제, `bidders_err` 예상 응찰자 vs 실제
-   - `win_brier` 성공률 예측 정확도, `would_win` 권장가로 낙찰됐을지
-   - `resale_vs_market_pct` 예측 시세 vs 실제 재매도가
-   - 지역·유형별 오차 + **suggested_adjustments**(사람이 읽는 보정 제안)
-
-### 나중에 고도화 요청하는 법
-`data/calibration.json`(원하면 `predictions.json`·`outcomes.json`도 함께)을 업로드하고 "이걸로 고도화해줘"라고 하면, 오차·바이어스를 근거로 baseline 낙찰가율·경쟁도(응찰자)·시세 보정·세율/비용 가정을 조정한 새 `assumptions.json`·`baselines.json`을 만들어 드립니다.
-
-예시 신호:
-```
-낙찰가율 bias +4.2%p → baseline mean 상향
-경기 수원시·아파트 +3.5%p → 해당 셀 보정
-응찰자 bias +2.1명 → competition base bidders 상향
-성공률 Brier 0.065 (양호)
-```
-
-## 주의
-세율·부대비용·권리 판단은 근사 추정이며 실제 세무·법률 판단을 대체하지 않습니다. 명도·권리·유동성 위험이 있으며 이 도구는 투자 자문이 아닙니다.
+## 8. 주의
+시세·세율·부대비용·확률·수익률·권리·특수물건은 **공개 데이터 기반 자동 추정**이며 투자 자문이 아닙니다. 과거 실적 매도가는 낙찰 후 시세 기준 추정입니다. **예상 배당표·정밀 권리분석(등기부)** 은 유료 데이터가 필요해 제외돼 있습니다. 입찰 전 매각물건명세서·현황조사서·감정평가서를 반드시 직접 확인하세요.

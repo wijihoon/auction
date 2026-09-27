@@ -25,6 +25,16 @@ from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA = os.path.join(ROOT, "data")
+
+
+def _load_cfg(name, default):
+    p = os.path.join(DATA, name)
+    if os.path.exists(p):
+        try:
+            return json.load(open(p, encoding="utf-8"))
+        except Exception:
+            return default
+    return default
 OUT = os.path.join(DATA, "properties.json")
 KST = timezone(timedelta(hours=9))
 
@@ -45,35 +55,9 @@ def type_from_usage(u):
     return "기타"
 
 
-# 수도권 시군구 → 법정동코드 5자리(국토부 LAWD_CD). 필요 시 확장.
-SIGUNGU_LAWD = {
-    # 서울 25구
-    "종로구": "11110", "중구": "11140", "용산구": "11170", "성동구": "11200",
-    "광진구": "11215", "동대문구": "11230", "중랑구": "11260", "성북구": "11290",
-    "강북구": "11305", "도봉구": "11320", "노원구": "11350", "은평구": "11380",
-    "서대문구": "11410", "마포구": "11440", "양천구": "11470", "강서구": "11500",
-    "구로구": "11530", "금천구": "11545", "영등포구": "11560", "동작구": "11590",
-    "관악구": "11620", "서초구": "11650", "강남구": "11680", "송파구": "11710", "강동구": "11740",
-    # 인천
-    "인천 중구": "28110", "인천 동구": "28140", "미추홀구": "28177", "연수구": "28185",
-    "남동구": "28200", "부평구": "28237", "계양구": "28245", "인천 서구": "28260",
-    "강화군": "28710", "옹진군": "28720",
-    # 경기 — 구 있는 시(더 구체적, 먼저 매칭)
-    "수원시 장안구": "41111", "수원시 권선구": "41113", "수원시 팔달구": "41115", "수원시 영통구": "41117",
-    "성남시 수정구": "41131", "성남시 중원구": "41133", "성남시 분당구": "41135",
-    "안양시 만안구": "41171", "안양시 동안구": "41173",
-    "부천시 원미구": "41192", "부천시 소사구": "41194", "부천시 오정구": "41196", "부천시": "41190",
-    "고양시 덕양구": "41281", "고양시 일산동구": "41285", "고양시 일산서구": "41287",
-    "안산시 상록구": "41271", "안산시 단원구": "41273",
-    "용인시 처인구": "41461", "용인시 기흥구": "41463", "용인시 수지구": "41465",
-    # 경기 — 시 단위
-    "의정부시": "41150", "광명시": "41210", "평택시": "41220", "동두천시": "41250",
-    "과천시": "41290", "구리시": "41310", "남양주시": "41360", "오산시": "41370",
-    "시흥시": "41390", "군포시": "41410", "의왕시": "41430", "하남시": "41450",
-    "파주시": "41480", "이천시": "41500", "안성시": "41550", "김포시": "41570",
-    "화성시": "41590", "광주시": "41610", "양주시": "41630", "포천시": "41650",
-    "여주시": "41670", "양평군": "41830", "가평군": "41820", "연천군": "41800",
-}
+# 법정동코드(시군구→5자리): data/lawd-codes.json 에서 로드(없으면 빈 맵→시세 폴백)
+SIGUNGU_LAWD = _load_cfg("lawd-codes.json", {})
+_TEXT_RULES = _load_cfg("text-rules.json", {})
 _LAWD_KEYS = sorted(SIGUNGU_LAWD.keys(), key=len, reverse=True)
 
 
@@ -127,9 +111,7 @@ def extract_apt_name(addr, bld):
             nm = grp.split(",")[-1].strip()
             if nm and not re.fullmatch(r'[\d\-.,\s]+', nm) and not nm.endswith(("동", "호", "층", "가")):
                 return nm
-    suffix = (r'아파트|자이|푸르지오|힐스테이트|래미안|편한세상|롯데캐슬|캐슬|더샵|아이파크|데시앙|'
-              r'센트럴|하늘채|리버뷰|리버|팰리스|타운|빌리지|주공|하이츠|리슈빌|스카이시티|스카이|'
-              r'시티|프라자|하이빌|하임|파크|빌라트|채|단지|힐|뷰')
+    suffix = ("|".join(_TEXT_RULES.get("apt_suffixes", ["아파트"])) or "아파트")
     pat = re.compile(r'([가-힣A-Za-z0-9]{2,}(?:%s)\d*(?:단지)?)' % suffix)
     for src in (bld or "", addr):                     # ② 건물명 접미사
         m = pat.search(src)
@@ -139,7 +121,7 @@ def extract_apt_name(addr, bld):
     return m.group(1) if m else ""
 
 
-SPECIAL_RIGHTS_KW = ["유치권", "법정지상권", "분묘기지권", "지분", "선순위전세권", "대지권미등기", "가처분", "예고등기"]
+SPECIAL_RIGHTS_KW = _TEXT_RULES.get("special_rights", ["유치권", "법정지상권", "지분", "대지권미등기"])
 
 
 def analyze_rights(row):
@@ -243,13 +225,22 @@ def row_to_item(row, f):
     bld = row.get("pjbBuldList", "") or ""
     raw = str(row.get("maeGiil", ""))
     sale_date = f"{raw[:4]}-{raw[4:6]}-{raw[6:]}" if len(raw) == 8 else None
+    tf = re.search(r'(\d+)\s*층', row.get("buldList") or bld or "")
+    by = re.search(r'((?:19|20)\d{2})\s*(?:년|\.)', bld)
     item = {"id": f"{court}_{case}_{seq}", "court": court, "case_no": case, "address": addr,
             "region": region_from_address(addr), "type": type_from_usage(usage),
-            "apt_name": extract_apt_name(addr, bld), "lawd_cd": lawd_from_address(addr),
+            "apt_name": extract_apt_name(addr, bld),
+            "lawd_cd": (row.get("srchHjguSiguCd") if (str(row.get("srchHjguSiguCd") or "").isdigit() and len(str(row.get("srchHjguSiguCd")))==5) else lawd_from_address(addr)),
             "exclusive_area": extract_area(bld), "floor": extract_floor(row.get("buldList") or bld),
+            "total_floors": int(tf.group(1)) if tf else None,
+            "built_year": int(by.group(1)) if by else None,
+            "building_detail": (bld or "").strip()[:120] or None,
+            "note": ((row.get("mulBigo") or row.get("rmk") or "").strip()[:160]) or None,
+            "usage_detail": usage or None, "views": _to_int(row.get("inqCnt")), "dept": row.get("jpDeptNm") or None,
             "appraisal": appr, "min_bid": _to_int(row.get("minmaePrice"), appr),
             "fail_rounds": _to_int(row.get("yuchalCnt")), "sale_date": sale_date,
-            "eviction": "normal", "market_price_override": None}
+            "eviction": "normal", "market_price_override": None, "photos": [], "bo_cd": row.get("boCd"), "maemul_ser": seq,
+            "reg_rights": [], "tenants": []}  # 물건상세(등기·임차)에서 채우면 배당표 자동 계산
     item.update(analyze_rights(row))
     return item
 
@@ -376,7 +367,8 @@ def past_row_to_item(row, f, cutoff):
     addr = (row.get("printSt", "") or "").strip()
     bld = row.get("pjbBuldList", "") or ""
     rdate = f"{raw[:4]}-{raw[4:6]}-{raw[6:]}" if len(raw) == 8 else None
-    return {"id": f"{court}_{case}_{seq}", "region": region_from_address(addr),
+    return {"id": f"{court}_{case}_{seq}", "court": court, "case_no": case,
+            "region": region_from_address(addr),
             "type": type_from_usage(usage), "apt_name": extract_apt_name(addr, bld),
             "lawd_cd": lawd_from_address(addr), "exclusive_area": extract_area(bld),
             "appraisal": appr, "won_bid": won,
@@ -430,6 +422,181 @@ def crawl_past(cfg):
     return out
 
 
+DETAIL_EP = BASE + "/pgj/pgj15B/selectAuctnCsSrchRslt.on"
+
+
+def parse_detail(res):
+    """물건 상세(dma_result) → 실제 사진·회차별 기일·권리텍스트·말소기준일."""
+    g = res.get("dspslGdsDxdyInfo", {}) or {}
+    b = res.get("csBaseInfo", {}) or {}
+    photos = []
+    for pic in res.get("csPicLst", []) or []:
+        data = pic.get("picFile") or ""
+        if isinstance(data, str) and data.startswith("/9j/"):        # JPEG base64 인라인
+            photos.append("data:image/jpeg;base64," + data)
+        elif isinstance(data, str) and data.startswith("iVBOR"):     # PNG base64
+            photos.append("data:image/png;base64," + data)
+    schedule = []
+    for x in res.get("gdsDspslDxdyLst", []) or []:
+        ymd = str(x.get("dxdyYmd") or "")
+        if len(ymd) == 8:
+            schedule.append({"date": f"{ymd[:4]}-{ymd[4:6]}-{ymd[6:]}",
+                             "low": _to_int(x.get("tsLwsDspslPrc")),
+                             "sold": _to_int(x.get("dspslAmt")) or None,
+                             "result": x.get("auctnDxdyRsltCd")})
+    spec = " ".join(str(g.get(k) or "") for k in ("gdsSpcfcRmk", "dspslGdsRmk", "ndstrcRghCtt")).strip()
+    m = re.search(r'((?:19|20)\d{2})[.\s]+(\d{1,2})[.\s]+(\d{1,2})', g.get("tprtyRnkHypthcStngDts") or "")
+    base_date = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}" if m else None
+    demn = (res.get("dstrtDemnInfo") or [{}])
+    dd = demn[0].get("dstrtDemnLstprdYmd") if demn else None
+    demand_end = f"{dd[:4]}-{dd[4:6]}-{dd[6:]}" if (dd and len(str(dd)) == 8) else None
+    objs = res.get("gdsDspslObjctLst") or [{}]
+    return {"photos": photos[:4], "schedule": schedule,
+            "detail_note": (spec[:400] or None), "base_date": base_date,
+            "claim_amt": _to_int(b.get("clmAmt")) or None, "demand_end": demand_end,
+            "ecdoc_id": g.get("dspslGdsSpcfcEcdocId") or None,
+            "orv_param": (objs[0] or {}).get("orvParam") or g.get("orvParam"),
+            "dspsl_gds_seq": g.get("dspslGdsSeq") or 1, "cs_no14": b.get("csNo") or None}
+
+
+def fetch_detail(opener, court_cd, cs_no, seq, timeout=15, retries=2):
+    """물건 상세 조회. court_cd=boCd, cs_no=srnSaNo, seq=maemulSer."""
+    headers = {"User-Agent": UA, "Content-Type": "application/json;charset=UTF-8", "Accept": "application/json",
+               "SC-Pgmid": "PGJ15BM01", "submissionid": "mf_wfm_mainFrame_sbm_selectGdsDtlSrchDtlInfo",
+               "Referer": BASE + "/pgj/index.on?w2xPath=/pgj/ui/pgj100/PGJ151F00.xml"}
+    payload = {"dma_srchGdsDtlSrch": {"csNo": cs_no, "cortOfcCd": court_cd, "dspslGdsSeq": str(seq),
+               "pgmId": "PGJ151F01", "srchInfo": {"bidDvsCd": "000331", "mvprpRletDvsCd": "00031R",
+               "cortAuctnSrchCondCd": "0004601", "cortOfcCd": court_cd}}}
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(DETAIL_EP, data=json.dumps(payload).encode("utf-8"),
+                                         headers=headers, method="POST")
+            with opener.open(req, timeout=timeout) as r:
+                res = json.loads(r.read().decode("utf-8")).get("data", {}).get("dma_result", {})
+            return parse_detail(res)
+        except Exception:  # noqa: BLE001
+            if attempt == retries - 1:
+                return {}
+            time.sleep(0.4)
+    return {}
+
+
+ECFS = "https://ecfs.scourt.go.kr"
+SDOC = "https://pvo.scourt.go.kr/streamdocs/v4/documents"
+SPEC_CACHE = os.path.join(DATA, "spec-cache.json")
+
+
+def _post_json(opener, url, payload, referer, timeout=15):
+    headers = {"User-Agent": UA, "Content-Type": "application/json;charset=UTF-8",
+               "Accept": "application/json", "Referer": referer}
+    req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"),
+                                 headers=headers, method="POST")
+    with opener.open(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def fetch_specification(opener, court, cs_no14, seq, ecdoc_id, orv_param, max_pages=20):
+    """매각물건명세서 → 임차인·말소기준일·배당요구종기. 실패 시 {} (파이프라인 계속)."""
+    if not (court and cs_no14 and ecdoc_id):
+        return {}
+    try:
+        # 1) courtauction: encParam 발급(+세션)
+        r1 = _post_json(opener, BASE + "/pgj/pgj15B/insertDspslGdsSpecArtcWdrwInf.on",
+                        {"dma_dspslGdsSpecLog": {"cortOfcCd": court, "csNo": cs_no14,
+                         "dspslGdsSeq": int(seq or 1), "orvParam": orv_param or "",
+                         "dspslGdsSpcfcEcdocId": ecdoc_id}}, BASE + "/pgj/index.on")
+        info = (r1.get("data") or {}).get("dma_dspslSpcfcInfo") or {}
+        enc, ecfs_url = info.get("encParam"), info.get("url")
+        if not (enc and ecfs_url):
+            return {}
+        # 2) ecfs 뷰어 세션 프라이밍(encParam → 쿠키)
+        try:
+            sep = "&" if "?" in ecfs_url else "?"
+            opener.open(urllib.request.Request(ecfs_url + sep + "encParam=" + enc,
+                        headers={"User-Agent": UA}), timeout=timeout_default()).read()
+        except Exception:  # noqa: BLE001
+            pass
+        # 3) getPdf → streamdocsId
+        r3 = _post_json(opener, ECFS + "/sgvo/sgvomain/getPdf.on",
+                        {"dma_srchEdms": {"ecdocId": ecdoc_id, "ecdocDtlSeq": "1",
+                         "csNo": cs_no14, "extnlUserYn": "Y", "bubviewerYn": "N", "jobKind": "JH"}},
+                        ECFS + "/sgvo/websquare/websquare.html")
+        sdoc = (r3.get("data") or {}).get("streamdocsId")
+        if not sdoc:
+            return {}
+        # 4) streamdocs 텍스트 레이어 페이지 수집
+        pages = {}
+        for n in range(max_pages):
+            try:
+                req = urllib.request.Request(f"{SDOC}/{sdoc}/texts/{n}",
+                      headers={"User-Agent": UA, "Referer": "https://pvo.scourt.go.kr/streamdocs/view"})
+                pages[n] = json.loads(opener.open(req, timeout=15).read().decode("utf-8"))
+            except Exception:  # noqa: BLE001
+                break
+        return parse_specification(pages) if pages else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def timeout_default():
+    return 15
+
+
+def _spec_page_lines(items):
+    """ecfs 문서뷰어 페이지(text+rect 조각들)를 위치 기준으로 줄 복원."""
+    frags = []
+    for it in items or []:
+        rects = it.get("rect") or []
+        if not rects:
+            continue
+        top = max(r["top"] for r in rects)
+        left = min(r["left"] for r in rects)
+        frags.append((top, left, (it.get("text") or "").replace(" ", "")))
+    frags.sort(key=lambda f: (-f[0], f[1]))
+    lines, buf, cur = [], [], None
+    for top, left, txt in frags:
+        if cur is None or abs(top - cur) <= 6:
+            buf.append(txt)
+            cur = cur or top
+        else:
+            lines.append("".join(buf))
+            buf, cur = [txt], top
+    if buf:
+        lines.append("".join(buf))
+    return lines
+
+
+_SPEC_ROW = re.compile(r'(\d{4})\.(\d{2})\.(\d{2})\.?(\d{1,3}(?:,\d{3})+)'
+                       r'(\d{4})\.(\d{2})\.(\d{2})\.?(\d{4})\.(\d{2})\.(\d{2})')
+
+
+def parse_specification(pages):
+    """매각물건명세서(ecfs 문서뷰어 페이지 dict {페이지no: [조각]}) → 임차인·말소기준일·배당요구종기.
+    임차 행: 임대차기간·보증금·전입일·확정일을 텍스트 레이어에서 추출."""
+    lines = []
+    for _, items in sorted(pages.items()):
+        lines += _spec_page_lines(items)
+    text = " ".join(lines)
+    base = re.search(r'(\d{4})\.(\d{1,2})\.(\d{1,2})\.\s*근저당', text)
+    base_date = f"{base[1]}-{int(base[2]):02d}-{int(base[3]):02d}" if base else None
+    de = re.search(r'배당요구종기\s*(\d{4})\.(\d{1,2})\.(\d{1,2})', text)
+    demand_end = f"{de[1]}-{int(de[2]):02d}-{int(de[3]):02d}" if de else None
+    tenants, seen = [], set()
+    for ln in lines:
+        for m in _SPEC_ROW.finditer(ln.replace(" ", "")):
+            g = m.groups()
+            key = (g[3], g[4] + g[5] + g[6], g[7] + g[8] + g[9])
+            if key in seen:
+                continue
+            seen.add(key)
+            tenants.append({"deposit": int(g[3].replace(",", "")),
+                            "lease_start": f"{g[0]}-{g[1]}-{g[2]}",
+                            "movein": f"{g[4]}-{g[5]}-{g[6]}",
+                            "fixed": f"{g[7]}-{g[8]}-{g[9]}",
+                            "demand": True})   # 배당요구 여부는 열 위치 기반으로 추후 정밀화
+    return {"base_date": base_date, "demand_end": demand_end, "tenants": tenants}
+
+
 def sample_properties():
     p = os.path.join(DATA, "properties.sample.json")
     if os.path.exists(p):
@@ -468,7 +635,40 @@ def main():
         with_lawd = sum(1 for p in props if p.get("lawd_cd"))
         print(f"[crawl] 수집 {len(props)}건 → properties.json "
               f"(법정동코드 확보 {with_lawd}/{len(props)}, 시세조회 가능)")
-    elif os.path.exists(OUT):
+
+    # 물건 상세(등기·임차·사진·회차별 기일) — 무거우므로 상위 N건만(opt-in)
+    n_detail = 0
+    for i, a in enumerate(sys.argv):
+        if a == "--details" and i + 1 < len(sys.argv):
+            try:
+                n_detail = int(sys.argv[i + 1])
+            except ValueError:
+                n_detail = 30
+    if n_detail and props:
+        opener = make_opener()
+        spec_cache = _load_cfg("spec-cache.json", {})
+        done = 0
+        for p in props[:n_detail]:
+            court, case, seq = p.get("bo_cd"), p.get("case_no"), p.get("dspsl_gds_seq", 1)
+            if not (court and case):
+                continue
+            d = fetch_detail(opener, court, case, p.get("maemul_ser", 1))
+            if d:
+                if d.get("photos"):
+                    p["photos"] = d["photos"]
+                if d.get("schedule"):
+                    p["schedule"] = d["schedule"]
+                if d.get("base_date"):
+                    p["base_date"] = d["base_date"]
+                if d.get("demand_end"):
+                    p["demand_end"] = d["demand_end"]
+                if d.get("detail_note"):
+                    p["note"] = ((p.get("note") or "") + " " + d["detail_note"]).strip()[:400]
+                done += 1
+            time.sleep(0.3)
+        save(props)
+        print(f"[detail] 상세 보강 {done}/{min(n_detail, len(props))}건 (사진·회차·권리텍스트)")
+    elif not props and os.path.exists(OUT):
         print("[crawl] 수집 0건 — 기존 properties.json 유지", file=sys.stderr)
     else:
         props = sample_properties()

@@ -36,13 +36,16 @@ jobs:
         run: python scripts/track.py
 
       - name: 블로그 콘텐츠 생성 (종합점수 top10, 사건 중복 제외)
+        env:
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: python scripts/content.py
 
       - name: 결과 커밋
         run: |
           git config user.name  "auction-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data/properties.json data/past-results.json data/analysis.json data/predictions.json data/outcomes.json data/calibration.json data/published.json content
+          git add data/properties.json data/past-results.json data/analysis.json data/backtest.json data/molit-cache.json data/apt-list-cache.json data/apt-info-cache.json data/photo-cache.json data/predictions.json data/outcomes.json data/calibration.json data/published.json content
           if git diff --cached --quiet; then
             echo "변경 없음 — 커밋 생략"
           else

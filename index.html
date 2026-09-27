@@ -3,239 +3,74 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>경매 분석 리포트</title>
+<title>경매 분석</title>
 <link href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" rel="stylesheet" />
-<style>
-  :root{--ink:#0B0E14;--panel:#12161F;--panel2:#161B26;--line:#212836;--line2:#2b3444;
-    --tx:#E6EAF2;--mut:#8B94A7;--dim:#5B6473;--gold:#E0A82E;--jade:#3DD68C;--rust:#E5484D;--blue:#5B9DFF;--r:14px}
-  *{box-sizing:border-box}
-  html,body{margin:0;background:var(--ink);color:var(--tx);font-family:"Pretendard Variable",Pretendard,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
-  body{padding-top:env(safe-area-inset-top,0)}
-  .num{font-variant-numeric:tabular-nums}
-  .wrap{max-width:1120px;margin:0 auto;padding:0 16px}
-  .pos{color:var(--jade)}.neg{color:var(--rust)}.cool{color:var(--blue)}.gold{color:var(--gold)}
-  header{position:sticky;top:0;z-index:20;background:rgba(11,14,20,.9);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
-  .hd{display:flex;align-items:center;gap:10px;height:52px}
-  .logo{font-weight:800;font-size:16px;letter-spacing:-.02em}.logo b{color:var(--gold)}
-  .hd .meta{margin-left:auto;color:var(--dim);font-size:11.5px;text-align:right}
-  h1{font-size:20px;margin:20px 0 12px;letter-spacing:-.02em}
-  .brief{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px}
-  .kt{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:11px 12px}
-  .kt .k{font-size:10.5px;color:var(--mut)}.kt .v{font-size:17px;font-weight:800;margin-top:3px;letter-spacing:-.02em}
-  .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
-  .chips{display:flex;gap:6px;flex-wrap:wrap}
-  .chip{background:var(--panel);border:1px solid var(--line2);color:var(--mut);border-radius:999px;padding:6px 14px;font-size:13px;cursor:pointer;font-family:inherit}
-  .chip.on{background:var(--gold);color:#1a1206;border-color:var(--gold);font-weight:700}
-  select{margin-left:auto;background:var(--panel);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit}
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:12px}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 15px;cursor:pointer}
-  .card:hover{border-color:var(--line2)}
-  .ctop{display:flex;align-items:center;gap:8px;margin-bottom:8px}
-  .sb{min-width:38px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px}
-  .sb-hi{background:rgba(61,214,140,.16);color:var(--jade)}.sb-mid{background:rgba(224,168,46,.14);color:var(--gold)}.sb-lo{background:rgba(139,148,167,.12);color:var(--mut)}
-  .nm{font-weight:750;font-size:15px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .vd{font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;white-space:nowrap}
-  .v-go{background:rgba(61,214,140,.14);color:var(--jade)}.v-hold{background:rgba(224,168,46,.13);color:var(--gold)}.v-skip{background:rgba(229,72,77,.12);color:var(--rust)}
-  .tags{font-size:11px;color:var(--dim);margin-bottom:10px}
-  .tags b{color:var(--mut);font-weight:600}
-  .mini{display:grid;grid-template-columns:repeat(2,1fr);gap:8px 12px}
-  .mini .l{font-size:10.5px;color:var(--mut)}.mini .v{font-size:14.5px;font-weight:700;margin-top:1px}
-  .rk{font-size:11px;margin-top:9px}.rk b{font-weight:700}
-  .rk-high{color:var(--rust)}.rk-mid{color:var(--gold)}.rk-low{color:var(--dim)}
-  .detail{margin-top:12px;padding-top:12px;border-top:1px solid var(--line);display:none}
-  .card.open .detail{display:block}
-  .strat{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:10px}
-  .st{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:8px 9px}
-  .st.rec{border-color:rgba(224,168,46,.45)}
-  .st .l{font-size:10px;color:var(--mut)}.st .v{font-size:13px;font-weight:750;margin-top:2px}
-  table.cost{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
-  table.cost td{padding:3px 0;color:var(--mut)}table.cost td:last-child{text-align:right;color:var(--tx)}
-  canvas{display:block;width:100%;margin-top:8px}
-  h2{font-size:17px;margin:26px 0 4px;letter-spacing:-.02em}
-  .sub{color:var(--mut);font-size:12.5px;margin:0 0 12px}
-  .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
-  .scroll{overflow-x:auto}
-  table.rep{width:100%;border-collapse:collapse;font-size:13px;min-width:440px}
-  table.rep th{color:var(--mut);font-weight:600;font-size:11px;text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-  table.rep th:first-child,table.rep td:first-child{text-align:left}
-  table.rep td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
-  .bar{display:grid;grid-template-columns:130px 1fr 42px;align-items:center;gap:8px;margin:6px 0;font-size:12px}
-  .bar>div:first-child{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .track{height:7px;background:var(--panel2);border-radius:999px;overflow:hidden}
-  .fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--gold))}
-.tabbar{display:flex;gap:4px;margin:2px 0 16px;border-bottom:1px solid var(--line)}
-  .tab{background:none;border:none;color:var(--mut);font-size:14px;font-weight:700;padding:10px 14px;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent}
-  .tab.on{color:var(--tx);border-bottom-color:var(--gold)}
-  footer{color:var(--dim);font-size:11px;padding:22px 0 46px;border-top:1px solid var(--line);margin-top:24px}
-  @media(max-width:560px){.brief{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}h1{font-size:18px}}
-</style>
+<link rel="stylesheet" href="assets/app.css">
 </head>
 <body>
-<header><div class="wrap hd">
-  <div class="logo">경매<b>·</b>분석</div>
-  <div class="meta" id="meta"></div>
+<header><div class="hd">
+  <span class="dot"></span><span class="brand">경매 분석</span>
+  <span class="upd" id="upd"></span>
 </div></header>
 
+<div class="seg"><div class="in">
+  <button class="on" data-tab="now">현재 매물</button>
+  <button data-tab="past">과거 실적</button>
+  <button data-tab="method">산정 방법</button>
+  <button data-tab="guide">가이드</button>
+</div></div>
+
 <main class="wrap">
-  <h1>오늘의 경매 물건</h1>
-  <div class="brief" id="brief"></div>
-
-  <div class="tabbar"><button class="tab on" data-tab="now">현재 물건</button><button class="tab" data-tab="past">과거 실적</button><button class="tab" data-tab="method">산정 방법</button></div>
-
   <div id="tab-now">
-  <div class="controls">
-    <div class="chips" id="chips"></div>
-    <select id="sort">
-      <option value="score">종합점수순</option>
-      <option value="roi">수익률순</option>
-      <option value="profit">순이익순</option>
-      <option value="win">성공률순</option>
-    </select>
-  </div>
-  <div class="grid" id="grid"></div>
+    <div class="controls">
+      <input id="q" class="search" type="search" placeholder="단지명 · 지역 · 사건번호 검색" autocomplete="off">
+      <div class="chips" id="themes"></div>
+      <div class="selects">
+        <select id="region"><option value="">전체 지역</option></select>
+        <select id="typesel"><option value="전체">전체 유형</option></select>
+        <select id="verdict"><option value="">전체 판정</option><option>입찰 적합</option><option>조건부</option><option>보류</option></select>
+        <select id="special"><option value="">특수 전체</option></select>
+        <select id="sort">
+          <option value="score">종합점수순</option>
+          <option value="roi">수익률순</option>
+          <option value="profit">순이익순</option>
+          <option value="win">성공률순</option>
+          <option value="sched">매각임박순</option>
+        </select>
+        <button id="favbtn" class="favtoggle">☆ 관심</button>
+      </div>
+    </div>
+    <div class="kpibar" id="kpibar"></div>
+    <div class="sortrow"><span id="cnt"></span></div>
+    <div class="feed" id="feed"></div>
+    <button id="more" class="morebtn" hidden></button>
   </div>
 
   <div id="tab-past" hidden>
-  <h2 style="margin-top:6px">과거 경매 실적</h2>
-  <p class="sub" id="pastSub">낙찰가 → 매도가 기준 수익률</p>
-  <div class="brief" id="pastKpi" style="grid-template-columns:repeat(3,1fr)"></div>
-  <div class="box scroll" style="margin-top:12px"><table class="rep">
-    <thead><tr><th>지역·유형</th><th>낙찰가</th><th>매도가</th><th>수익률</th></tr></thead>
-    <tbody id="pastBody"></tbody></table></div>
-  <div class="box" style="margin-top:12px"><div style="font-size:12.5px;color:var(--mut);margin-bottom:8px">지역·유형별 평균 낙찰가율</div><div id="bars"></div></div>
+    <h1>과거 경매 실적</h1>
+    <p class="sub" id="pastSub"></p>
+    <div id="mstat"></div>
+    <div class="controls">
+      <input id="pq" class="search" type="search" placeholder="지역 · 단지 · 유형 검색" autocomplete="off">
+      <div class="selects">
+        <select id="pregion"><option value="">전체 지역</option></select>
+        <select id="ptype"><option value="">전체 유형</option></select>
+        <select id="psort"><option value="roi">수익률순</option><option value="ratio">낙찰가율순</option><option value="win">낙찰가순</option></select>
+      </div>
+    </div>
+    <div class="kpis" id="pastKpi"></div>
+    <div class="sortrow"><span id="pcnt"></span></div>
+    <div class="feed" id="pastFeed"></div>
+    <button id="pmore" class="morebtn" hidden></button>
+    <div class="msec" style="margin-top:8px"><h3 style="font-size:14px">지역·유형별 평균 낙찰가율</h3><div id="bars"></div></div>
   </div>
 
   <div id="tab-method" hidden><div id="method"></div></div>
+  <div id="tab-guide" hidden><div id="guide"></div></div>
 
-  <footer>시세는 국토부 실거래가 기준 추정, 세율·부대비용은 근사값입니다. 투자 자문이 아니며 입찰 전 매각물건명세서·현황조사서를 직접 확인하세요.</footer>
+  <footer>시세·세율·부대비용·확률·수익률은 공개 데이터 기반 자동 추정이며 투자 자문이 아닙니다. 과거 실적의 매도가는 낙찰 후 시세 기준 추정입니다. 입찰 전 매각물건명세서·현황조사서를 반드시 직접 확인하세요.</footer>
 </main>
 
-<script>
-let AN=null, FILTER="전체";
-const won=n=>{if(n==null||isNaN(n))return"—";const g=n<0;n=Math.abs(Math.round(n));const e=Math.floor(n/1e8),m=Math.round((n%1e8)/1e4);return(g?"−":"")+(e?`${e}억 ${m?m.toLocaleString()+"만":""}`.trim():`${m.toLocaleString()}만`)};
-const pct=x=>x==null?"—":(x*100).toFixed(x*100<10?1:0)+"%";
-const sc=n=>n>=0?"pos":"neg";
-const el=id=>document.getElementById(id);
-function dong(a){if(!a)return"";const m=a.match(/([가-힣]+(?:동|읍|면))/);return m?m[1]:""}
-function pName(r){return (r.apt_name&&r.apt_name.trim())||dong(r.address)||r.type||"물건"}
-function caseNo(r){if(r.case_no)return r.case_no;const m=(r.id||"").match(/\d{4}[가-힣]?타경\d+/);return m?m[0]:(r.id||"");}
-const COURT_URL="https://www.courtauction.go.kr/";
-function verdict(r){const hi=(r.rights_risk||{}).level==="높음";
-  if(r.net_profit>0&&r.success_prob>=.35&&r.roi>=.10&&!hi)return["v-go","입찰 적합"];
-  if(r.net_profit>0&&r.roi>=.05&&!hi)return["v-hold","조건부"];return["v-skip","보류"]}
-
-function cardHTML(r,i){const[vc,vt]=verdict(r);const lq=r.liquidity||{},rk=r.rights_risk||{level:"낮음"},st=r.bid_strategies||{};
-  const sb=r.score>=55?"sb-hi":r.score>=40?"sb-mid":"sb-lo";
-  const rkc=rk.level==="높음"?"rk-high":rk.level==="보통"?"rk-mid":"rk-low";
-  const flags=(rk.flags||[]).length?" · "+rk.flags.join(", "):"";
-  return `<div class="card" data-i="${i}" data-type="${r.type}">
-    <div class="ctop"><span class="sb ${sb}">${r.score}</span>
-      <span class="nm">${pName(r)}</span><span class="vd ${vc}">${vt}</span></div>
-    <div class="tags"><b>${r.region}</b> · ${r.type} · 유찰 ${r.fail_rounds}회 · 환금성 ${lq.grade||"—"} · <a href="${COURT_URL}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--blue)">사건 ${caseNo(r)}↗</a></div>
-    <div class="mini">
-      <div><div class="l">적정 입찰가</div><div class="v gold">${won(r.recommended_bid)}</div></div>
-      <div><div class="l">낙찰 성공률</div><div class="v cool">${pct(r.success_prob)} <span style="color:var(--dim);font-size:11px">~${r.expected_bidders}명</span></div></div>
-      <div><div class="l">예상 순이익</div><div class="v ${sc(r.net_profit)}">${won(r.net_profit)}</div></div>
-      <div><div class="l">ROI</div><div class="v ${sc(r.roi)}">${(r.roi*100).toFixed(1)}%</div></div>
-    </div>
-    <div class="rk ${rkc}"><b>권리 ${rk.level}</b>${flags}</div>
-    <div class="detail">
-      <div class="strat">
-        <div class="st"><div class="l">보수</div><div class="v">${won(st.safe_max)}</div></div>
-        <div class="st rec"><div class="l">권장</div><div class="v gold">${won(r.recommended_bid)}</div></div>
-        <div class="st"><div class="l">공격</div><div class="v">${won(st.win_target)}</div></div>
-      </div>
-      <table class="cost">
-        <tr><td>예상 매도가(시세)</td><td>${won(r.market_price)}</td></tr>
-        ${r.winners_curse?`<tr><td>승자의 저주 보정</td><td>−${(r.winners_curse*100).toFixed(1)}% → ${won(r.value_adjusted)}</td></tr>`:""}
-        <tr><td>− 낙찰가(권장)</td><td>${won(r.recommended_bid)}</td></tr>
-        ${Object.entries(r.cost_items||{}).map(([k,v])=>v?`<tr><td>− ${k}</td><td>${won(v)}</td></tr>`:"").join("")}
-        <tr style="border-top:1px solid var(--line)"><td style="color:var(--tx);font-weight:700">= 순이익</td><td class="${sc(r.net_profit)}" style="font-weight:700">${won(r.net_profit)}</td></tr>
-      </table>
-      <canvas class="cv" height="120"></canvas>
-      <div style="font-size:11px;color:var(--mut);margin-top:8px;line-height:1.7">점수구성 — 환금성 ${(r.score_breakdown||{}).환금성??"—"} · 안전마진 ${(r.score_breakdown||{}).안전마진??"—"} · 위험조정 ${(r.score_breakdown||{}).위험조정수익??"—"} · 권리 ${(r.score_breakdown||{}).권리안전??"—"} · 낙찰가능 ${(r.score_breakdown||{}).낙찰가능성??"—"}<br>Kelly 자금배분 ${Math.round((r.kelly_fraction||0)*100)}%</div>
-    </div>
-  </div>`}
-
-const SORT={score:(a,b)=>b.score-a.score,roi:(a,b)=>b.roi-a.roi,profit:(a,b)=>b.net_profit-a.net_profit,win:(a,b)=>b.success_prob-a.success_prob};
-function shown(){return AN.properties.filter(r=>FILTER==="전체"||r.type===FILTER).sort(SORT[el("sort").value])}
-function renderGrid(){
-  const rows=shown();
-  el("grid").innerHTML=rows.map((r,i)=>cardHTML(r,i)).join("")||'<div class="box" style="color:var(--mut)">해당 유형 물건이 없습니다.</div>';
-  el("grid").querySelectorAll(".card").forEach(c=>c.onclick=()=>{
-    c.classList.toggle("open");
-    if(c.classList.contains("open"))drawCurve(c.querySelector(".cv"),rows[+c.dataset.i]);
-  });
-}
-function drawCurve(cv,r){const cur=r.curve;if(!cur)return;const dpr=devicePixelRatio||1,W=cv.clientWidth,H=cv.height;
-  cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);g.clearRect(0,0,W,H);
-  let pmin=1e18,pmax=-1e18;cur.forEach(c=>{pmin=Math.min(pmin,c.profit);pmax=Math.max(pmax,c.profit)});
-  const lo=cur[0].bid,hi=cur.at(-1).bid,p=6,X=b=>p+(b-lo)/(hi-lo)*(W-2*p),Yw=w=>H-p-w*(H-2*p),Yp=v=>H-p-((v-pmin)/((pmax-pmin)||1))*(H-2*p);
-  if(pmin<0&&pmax>0){g.strokeStyle="#2a3342";g.setLineDash([3,4]);g.beginPath();g.moveTo(p,Yp(0));g.lineTo(W-p,Yp(0));g.stroke();g.setLineDash([])}
-  g.strokeStyle="#E0A82E";g.lineWidth=2;g.beginPath();cur.forEach((c,i)=>i?g.lineTo(X(c.bid),Yp(c.profit)):g.moveTo(X(c.bid),Yp(c.profit)));g.stroke();
-  g.strokeStyle="#5B9DFF";g.lineWidth=2;g.beginPath();cur.forEach((c,i)=>i?g.lineTo(X(c.bid),Yw(c.win)):g.moveTo(X(c.bid),Yw(c.win)));g.stroke();
-  g.strokeStyle="rgba(224,168,46,.5)";g.setLineDash([2,3]);g.beginPath();g.moveTo(X(r.recommended_bid),p);g.lineTo(X(r.recommended_bid),H-p);g.stroke();g.setLineDash([])}
-
-function renderBrief(){const P=AN.properties,fit=P.filter(r=>verdict(r)[1]==="입찰 적합").length;
-  const roi=P.length?P.reduce((s,r)=>s+r.roi,0)/P.length:0,past=AN.backtest.summary;
-  el("brief").innerHTML=[["물건",P.length+"건","gold"],["입찰 적합",fit+"건","pos"],
-    ["평균 ROI",(roi*100).toFixed(1)+"%",sc(roi)],["과거 수익률",(past.avg_roi*100).toFixed(1)+"%",sc(past.avg_roi)]]
-    .map(([k,v,c])=>`<div class="kt"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("")}
-function renderChips(){const types=["전체",...new Set(AN.properties.map(r=>r.type))];
-  el("chips").innerHTML=types.map(t=>`<span class="chip${t===FILTER?" on":""}" data-t="${t}">${t}</span>`).join("");
-  el("chips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{FILTER=c.dataset.t;
-    el("chips").querySelectorAll(".chip").forEach(x=>x.classList.toggle("on",x.dataset.t===FILTER));renderGrid()})}
-function renderPast(){const bt=AN.backtest,s=bt.summary,wd=AN.history_lookback_days;
-  el("pastSub").textContent=`실제 낙찰 ${AN.history_used||0}건 · 매도가는 국토부 시세 기준 추정 · 최근 ${wd||30}일`;
-  el("pastKpi").innerHTML=[["실현",s.n+"건","gold"],["평균 수익률",(s.avg_roi*100).toFixed(1)+"%",sc(s.avg_roi)],["누적 순이익",won(s.total_net_profit),sc(s.total_net_profit)]]
-    .map(([k,v,c])=>`<div class="kt"><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`).join("");
-  el("pastBody").innerHTML=[...bt.cases].sort((a,b)=>b.roi-a.roi).map(c=>`<tr>
-    <td style="color:var(--mut)">${c.region} · ${c.type}</td><td class="num">${won(c.won_bid)}</td>
-    <td class="num">${won(c.resale_price)}</td><td class="num ${sc(c.roi)}" style="font-weight:750">${(c.roi*100).toFixed(1)}%</td></tr>`).join("");
-  const rs=AN.region_stats,mx=Math.max(...Object.values(rs).map(x=>x.avg_sale_ratio),100);
-  el("bars").innerHTML=Object.entries(rs).map(([k,v])=>`<div class="bar"><div title="${k}">${k}</div>
-    <div class="track"><div class="fill" style="width:${(v.avg_sale_ratio/mx*100).toFixed(0)}%"></div></div>
-    <div class="num" style="text-align:right">${v.avg_sale_ratio}%</div></div>`).join("")}
-
-function renderMethod(){
-  const w=(AN.assumptions&&AN.assumptions.score_weights)||{liquidity:.35,margin:.20,sharpe:.20,rights:.15,win:.10};
-  const P=v=>Math.round(v*100)+"%";
-  el("method").innerHTML=`
-  <h2>어떻게 계산했나</h2>
-  <p class="sub">모든 수치는 공개 데이터 기반 자동 산정입니다. 아래는 데이터 출처와 계산 방식입니다.</p>
-  <div class="box"><h3 style="margin:0 0 8px;font-size:14px">📥 데이터 출처</h3>
-   <table class="rep" style="min-width:0"><tbody>
-   <tr><td>경매 물건</td><td style="text-align:left">법원경매정보(courtauction.go.kr) 검색 API를 매일 크롤링</td></tr>
-   <tr><td>과거 낙찰</td><td style="text-align:left">법원경매정보 매각결과 API(최근 ${AN.history_lookback_days||60}일)</td></tr>
-   <tr><td>시세(매도가)</td><td style="text-align:left">국토교통부 실거래가 OpenAPI — 같은 단지·유사 면적 최근 실거래 중앙값(층·향 보정)</td></tr>
-   </tbody></table></div>
-  <div class="box" style="margin-top:10px"><h3 style="margin:0 0 8px;font-size:14px">🎯 적정 입찰가</h3>
-   <p style="margin:.4em 0"><b>① 승자의 저주 보정</b> (공통가치 경매, Capen·Clapp·Campbell 1971) — 낙찰됐다는 건 내 평가가 최고였다는 뜻이라 실제 가치는 시세보다 낮습니다. <code>보정가치 = 시세 × (1 − 변동계수 × E[응찰자수 정규최댓값])</code>. 경쟁·불확실성이 클수록 더 깎아 과다낙찰을 막습니다.</p>
-   <p style="margin:.4em 0"><b>② 기대가치 최적화</b> (1차가격 봉인입찰, Vickrey·Milgrom–Weber) — 실제 낙찰가율 분포로 낙찰확률을 잡고 <b>낙찰확률 × 보정순이익</b>이 가장 큰 가격을 찾습니다. 최소수익률(기본 8%) 하한도 적용. 보수·권장·공격 3가지로 제시.</p></div>
-  <div class="box" style="margin-top:10px"><h3 style="margin:0 0 8px;font-size:14px">📈 낙찰 성공률 · 예상 순이익</h3>
-   <p style="margin:.4em 0"><b>성공률</b> = 지역·유형별 <b>실제 낙찰가율 분포</b>(과거 낙찰 데이터로 학습) + 경쟁도(예상 응찰자 수)로 조정한 뒤, 내 입찰가율이 그 분포에서 이길 확률.</p>
-   <p style="margin:.4em 0"><b>순이익</b> = 보정 매도가 − 낙찰가 − 부대비용(취득세·양도세·명도·수리·보유·매도중개·인수권리). 세금은 보유기간(단기중과 등)까지 반영.</p></div>
-  <div class="box" style="margin-top:10px"><h3 style="margin:0 0 8px;font-size:14px">🏅 종합 점수 (검증된 투자이론)</h3>
-   <table class="rep" style="min-width:0"><tbody>
-   <tr><td>환금성 (최우선)</td><td style="text-align:right">${P(w.liquidity)}</td></tr>
-   <tr><td>안전마진 · Graham Margin of Safety</td><td style="text-align:right">${P(w.margin)}</td></tr>
-   <tr><td>위험조정수익 · Sharpe 개념</td><td style="text-align:right">${P(w.sharpe)}</td></tr>
-   <tr><td>권리 안전</td><td style="text-align:right">${P(w.rights)}</td></tr>
-   <tr><td>낙찰 가능성</td><td style="text-align:right">${P(w.win)}</td></tr>
-   </tbody></table>
-   <p style="margin:.5em 0;font-size:.95em">가중합에 <b>환금성 게이트</b>를 곱해 환금성 낮은 물건은 총점을 눌렀고(환금성 최우선), 순손실 물건은 20점 상한. 별도로 <b>Kelly 기준</b> 자금배분 비중도 제시합니다.</p></div>
-  <p class="disc" style="color:var(--dim);font-size:12px;margin-top:14px">세율·부대비용·확률은 근사 추정이며 투자 자문이 아닙니다.</p>`;
-}
-async function boot(){
-  try{AN=await fetch("data/analysis.json").then(r=>r.json())}catch(e){}
-  if(!AN){el("grid").innerHTML='<div class="box" style="color:var(--mut)">데이터가 아직 없습니다. 파이프라인 첫 실행 후 표시됩니다.</div>';return}
-  el("meta").textContent=(AN.generated_at||"").slice(0,16).replace("T"," ");
-  renderBrief();renderChips();renderGrid();renderPast();renderMethod();
-  el("sort").onchange=renderGrid;
-  document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("on",x===t));["now","past","method"].forEach(k=>el("tab-"+k).hidden=t.dataset.tab!==k);});
-  addEventListener("resize",()=>{const rows=shown();document.querySelectorAll(".card.open").forEach(c=>drawCurve(c.querySelector(".cv"),rows[+c.dataset.i]))});
-}
-boot();
-</script>
+<script src="assets/app.js"></script>
 </body>
 </html>

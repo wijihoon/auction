@@ -114,5 +114,7 @@
   "history_lookback_days": 30,
   "molit_months": 6,
   "molit_workers": 8,
-  "wc_cap": 0.2
+  "wc_cap": 0.2,
+  "unpaid_mgmt_reserve_m2": 15000,
+  "auction_cost_rate": 0.015
 }
